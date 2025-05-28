@@ -1,10 +1,9 @@
-// app/layout.js
 import './globals.css';
 import { AuthProvider } from './context/AuthContext';
 
 export const metadata = {
-    title: 'Your App Title',
-    description: 'Your app description',
+    title: 'BingePal',
+    description: 'Your personal TV series tracker',
 };
 
 export default function RootLayout({ children }) {
