@@ -43,9 +43,9 @@ export default function HomePage() {
                 {/* Header */}
                 <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">SeriesTracker Pro</h1>
+                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Bingie</h1>
                         <p className="text-gray-600 dark:text-gray-400">
-                            {user ? `Welcome back, ${user.displayName || user.email}!` : 'Your personal TV series organizer'}
+                            {user ? `Welcome back, ${user.displayName || user.email}!` : 'Your personal TV series tracker'}
                         </p>
                     </div>
 
