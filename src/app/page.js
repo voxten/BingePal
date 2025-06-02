@@ -2,98 +2,167 @@
 
 import { useAuth } from './context/AuthContext';
 import SeriesList from './components/SeriesList';
-import { FiSun, FiMoon, FiLogIn, FiLogOut } from 'react-icons/fi';
+import { FiSun, FiMoon, FiLogIn, FiLogOut, FiMenu } from 'react-icons/fi';
 import { useEffect, useState } from 'react';
 import LoadingSpinner from './components/LoadingSpinner';
+import Image from 'next/image';
 
 export default function HomePage() {
     const { login, logout, user, loading: authLoading } = useAuth();
     const [darkMode, setDarkMode] = useState(false);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+    // Detect system color scheme
     useEffect(() => {
-        // Check for user's preferred color scheme
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         setDarkMode(prefersDark);
         setIsInitialized(true);
     }, []);
 
+    // Apply dark mode class
     useEffect(() => {
-        // Apply dark mode class to body
         if (isInitialized) {
-            if (darkMode) {
-                document.documentElement.classList.add('dark');
-            } else {
-                document.documentElement.classList.remove('dark');
-            }
+            document.documentElement.classList.toggle('dark', darkMode);
         }
     }, [darkMode, isInitialized]);
 
     if (!isInitialized || authLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <LoadingSpinner />
-            </div>
-        );
+        return <LoadingSpinner />;
     }
 
     return (
         <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
             <div className="container mx-auto px-4 py-8">
                 {/* Header */}
-                <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">BingePal</h1>
-                        <p className="text-gray-600 dark:text-gray-400">
-                            {user ? `Welcome back, ${user.displayName || user.email}!` : 'Your personal TV series tracker'}
-                        </p>
+                <header className="flex justify-between items-center mb-8">
+                    {/* Logo and title (unchanged) */}
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 relative">
+                            <Image
+                                src="/logo.png"
+                                alt="BingePal Logo"
+                                width={100}
+                                height={100}
+                                className="object-contain"
+                                priority
+                            />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">BingePal</h1>
+                            <p className="text-gray-600 dark:text-gray-400">
+                                {user ? `Hi, ${user.displayName || user.email.split('@')[0]}` : 'Your series tracker'}
+                            </p>
+                        </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    {/* DESKTOP BUTTONS (hidden on mobile) */}
+                    <div className="hidden md:flex items-center gap-4">
+                        {/* Theme Toggle */}
                         <button
                             onClick={() => setDarkMode(!darkMode)}
-                            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                            aria-label="Toggle dark mode"
+                            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                            aria-label="Toggle theme"
                         >
-                            {darkMode ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
+                            {darkMode ? <FiSun size={20} /> : <FiMoon size={20} />}
                         </button>
 
+                        {/* Auth Button */}
                         {user ? (
                             <button
                                 onClick={logout}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
+                                className="flex items-center gap-2 px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg"
                             >
-                                <FiLogOut className="w-5 h-5" />
+                                <FiLogOut size={18} />
                                 <span>Sign Out</span>
                             </button>
                         ) : (
                             <button
                                 onClick={login}
-                                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg"
                             >
-                                <FiLogIn className="w-5 h-5" />
+                                <FiLogIn size={18} />
                                 <span>Sign In</span>
                             </button>
                         )}
                     </div>
+
+                    {/* MOBILE MENU TOGGLE (visible only on mobile) */}
+                    <div className="md:hidden relative">
+                        <button
+                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                            aria-label="Menu"
+                        >
+                            <FiMenu size={24} />
+                        </button>
+
+                        {/* MOBILE MENU DROPDOWN */}
+                        {isMobileMenuOpen && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50 border border-gray-200 dark:border-gray-700">
+                                {/* Theme Toggle Item */}
+                                <button
+                                    onClick={() => {
+                                        setDarkMode(!darkMode);
+                                        setIsMobileMenuOpen(false);
+                                    }}
+                                    className="flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                                >
+                                    {darkMode ? (
+                                        <>
+                                            <FiSun className="mr-3" />
+                                            Light Mode
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FiMoon className="mr-3" />
+                                            Dark Mode
+                                        </>
+                                    )}
+                                </button>
+
+                                {/* Auth Item */}
+                                {user ? (
+                                    <button
+                                        onClick={() => {
+                                            logout();
+                                            setIsMobileMenuOpen(false);
+                                        }}
+                                        className="flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                                    >
+                                        <FiLogOut className="mr-3" />
+                                        Sign Out
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => {
+                                            login();
+                                            setIsMobileMenuOpen(false);
+                                        }}
+                                        className="flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                                    >
+                                        <FiLogIn className="mr-3" />
+                                        Sign In
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </header>
 
-                {/* Main Content */}
+                {/* Main content (unchanged) */}
                 {user ? (
                     <SeriesList userId={user.uid} />
                 ) : (
                     <div className="text-center py-12">
-                        <h2 className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">
-                            Track Your Favorite TV Series
+                        <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">
+                            Track Your TV Series
                         </h2>
-                        <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto mb-6">
-                            Sign in to create your personalized collection and track your progress.
-                        </p>
                         <button
                             onClick={login}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg transition-colors text-lg"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg"
                         >
-                            Sign In with Google
+                            Sign In to Get Started
                         </button>
                     </div>
                 )}

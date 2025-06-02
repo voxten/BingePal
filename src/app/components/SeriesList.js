@@ -236,18 +236,15 @@ const SeriesList = ({ userId }) => {
 
                         <div>
                             <label className="block text-sm font-medium mb-1 dark:text-gray-300">Seasons</label>
-                            <select
+                            <input
+                                type="number"
                                 name="seasons"
                                 value={filters.seasons}
                                 onChange={handleFilterChange}
+                                min="0"
+                                placeholder="Any"
                                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600"
-                            >
-                                <option value="">Any Seasons</option>
-                                <option value="1">1 Season</option>
-                                <option value="2">2 Seasons</option>
-                                <option value="3">3 Seasons</option>
-                                <option value="4">4+ Seasons</option>
-                            </select>
+                            />
                         </div>
 
                         <div>
@@ -274,7 +271,7 @@ const SeriesList = ({ userId }) => {
             )}
 
             {/* Series Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                 {filteredSeries?.map((doc) => {
                     const data = doc.data();
                     const progress = Math.min(
@@ -285,10 +282,10 @@ const SeriesList = ({ userId }) => {
                     return (
                         <div
                             key={doc.id}
-                            className="group relative bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
+                            className="group relative bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-300"
                         >
                             {/* Series Image */}
-                            <div className="relative h-48 overflow-hidden">
+                            <div className="relative h-90 overflow-hidden">
                                 <img
                                     src={data.imageUrl || 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Placeholder_view_vector.svg/1280px-Placeholder_view_vector.svg.png'}
                                     alt={data.title}
@@ -298,35 +295,35 @@ const SeriesList = ({ userId }) => {
                                     }}
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
-                                <div className="absolute bottom-0 left-0 right-0 p-4">
-                                    <h3 className="text-xl font-bold text-white truncate">{data.title}</h3>
+                                <div className="absolute bottom-0 left-0 right-0 p-2">
+                                    <h3 className="text-sm font-bold text-white truncate">{data.title}</h3>
                                 </div>
                             </div>
 
                             {/* Series Details */}
-                            <div className="p-4">
-                                <div className="flex justify-between items-start mb-3">
+                            <div className="p-3">
+                                <div className="flex justify-between items-start mb-2">
                                     <div>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        <p className="text-xs text-gray-600 dark:text-gray-400">
                                             {data.seasons} season{data.seasons !== 1 ? 's' : ''} • {data.totalEpisodes} episodes
                                         </p>
                                     </div>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(data.status)}`}>
-                    {getStatusLabel(data.status)}
-                  </span>
+                                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${getStatusColor(data.status)}`}>
+                {getStatusLabel(data.status)}
+            </span>
                                 </div>
 
                                 {/* Progress Bar */}
-                                <div className="mb-4">
-                                    <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-700 dark:text-gray-300">
-                      {data.watchedEpisodes} / {data.totalEpisodes}
-                    </span>
+                                <div className="mb-3">
+                                    <div className="flex justify-between text-xs mb-0.5">
+                <span className="text-gray-700 dark:text-gray-300">
+                    {data.watchedEpisodes} / {data.totalEpisodes}
+                </span>
                                         <span className="text-gray-700 dark:text-gray-300">{progress}%</span>
                                     </div>
-                                    <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
                                         <div
-                                            className={`h-2 rounded-full ${
+                                            className={`h-1.5 rounded-full ${
                                                 progress < 30 ? 'bg-red-500' :
                                                     progress < 70 ? 'bg-yellow-500' : 'bg-green-500'
                                             }`}
@@ -336,13 +333,13 @@ const SeriesList = ({ userId }) => {
                                 </div>
 
                                 {/* Episode Counter */}
-                                <div className="flex items-center mb-4">
+                                <div className="flex items-center mb-3">
                                     <button
                                         onClick={() => {
                                             const newCount = Math.max(data.watchedEpisodes - 1, 0);
                                             handleWatchedEpisodesChange(doc.id, newCount);
                                         }}
-                                        className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded-l-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                                        className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded-l-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-xs"
                                         disabled={data.watchedEpisodes <= 0}
                                     >
                                         -
@@ -353,14 +350,14 @@ const SeriesList = ({ userId }) => {
                                         onChange={(e) => handleWatchedEpisodesChange(doc.id, e.target.value)}
                                         min="0"
                                         max={data.totalEpisodes}
-                                        className="w-16 text-center border-t border-b border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                                        className="w-12 text-center border-t border-b border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white text-xs py-0.5"
                                     />
                                     <button
                                         onClick={() => {
                                             const newCount = Math.min(data.watchedEpisodes + 1, data.totalEpisodes);
                                             handleWatchedEpisodesChange(doc.id, newCount);
                                         }}
-                                        className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded-r-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                                        className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded-r-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-xs"
                                         disabled={data.watchedEpisodes >= data.totalEpisodes}
                                     >
                                         +
@@ -371,7 +368,7 @@ const SeriesList = ({ userId }) => {
                                 <select
                                     value={data.status}
                                     onChange={(e) => handleStatusChange(doc.id, e.target.value)}
-                                    className="w-full mb-4 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    className="w-full mb-2 px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 >
                                     <option value="plan-to-watch">Plan to Watch</option>
                                     <option value="watching">Watching</option>
@@ -384,17 +381,17 @@ const SeriesList = ({ userId }) => {
                                 <div className="flex justify-between">
                                     <button
                                         onClick={() => setEditingSeries({ id: doc.id, ...data })}
-                                        className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
+                                        className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors text-xs"
                                     >
-                                        <FiEdit2 className="w-4 h-4" />
-                                        <span className="text-sm">Edit</span>
+                                        <FiEdit2 className="w-3 h-3" />
+                                        <span>Edit</span>
                                     </button>
                                     <button
                                         onClick={() => handleDelete(doc.id)}
-                                        className="flex items-center gap-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                                        className="flex items-center gap-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 transition-colors text-xs"
                                     >
-                                        <FiTrash2 className="w-4 h-4" />
-                                        <span className="text-sm">Delete</span>
+                                        <FiTrash2 className="w-3 h-3" />
+                                        <span>Delete</span>
                                     </button>
                                 </div>
                             </div>
