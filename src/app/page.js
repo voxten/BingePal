@@ -40,11 +40,12 @@ export default function HomePage() {
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 relative">
                             <Image
-                                src="/logo.png"
+                                src="https://cms8ydvfu8qmbdmt.public.blob.vercel-storage.com/logo.webp"
                                 alt="BingePal Logo"
                                 width={100}
                                 height={100}
                                 className="object-contain"
+                                loader={({ src }) => src}
                                 priority
                             />
                         </div>

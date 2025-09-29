@@ -11,7 +11,8 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
         totalEpisodes: 1,
         watchedEpisodes: 0,
         status: 'plan-to-watch',
-        userId: userId
+        userId: userId,
+        rating: 0 // Add default rating
     });
 
     const handleSubmit = async (e) => {
@@ -186,6 +187,28 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
                         >
                             Add Series
                         </button>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Rating
+                        </label>
+                        <div className="flex items-center space-x-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                    key={star}
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, rating: star }))}
+                                    className="text-2xl focus:outline-none"
+                                >
+                                    {star <= formData.rating ? (
+                                        <span className="text-yellow-400">★</span>
+                                    ) : (
+                                        <span className="text-gray-300">☆</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </form>
             </div>

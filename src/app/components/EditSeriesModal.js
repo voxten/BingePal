@@ -10,7 +10,8 @@ const EditSeriesModal = ({ series, onClose }) => {
         seasons: 1,
         totalEpisodes: 1,
         watchedEpisodes: 0,
-        status: 'plan-to-watch'
+        status: 'plan-to-watch',
+        rating: 0
     });
 
     useEffect(() => {
@@ -169,6 +170,28 @@ const EditSeriesModal = ({ series, onClose }) => {
                             <option value="on-hold">On Hold</option>
                             <option value="dropped">Dropped</option>
                         </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Rating
+                        </label>
+                        <div className="flex items-center space-x-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                    key={star}
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, rating: star }))}
+                                    className="text-2xl focus:outline-none"
+                                >
+                                    {star <= formData.rating ? (
+                                        <span className="text-yellow-400">★</span>
+                                    ) : (
+                                        <span className="text-gray-300">☆</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Modal Footer */}
