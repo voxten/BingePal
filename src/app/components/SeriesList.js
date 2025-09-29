@@ -6,7 +6,7 @@ import { collection, query, where, deleteDoc, doc, updateDoc } from 'firebase/fi
 import { db } from '../firebase';
 import AddSeriesModal from './AddSeriesModal';
 import EditSeriesModal from './EditSeriesModal';
-import { FiPlus, FiEdit2, FiTrash2, FiFilter, FiX } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiFilter, FiX, FiStar } from 'react-icons/fi';
 import LoadingSpinner from './LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
 
@@ -18,7 +18,8 @@ const SeriesList = ({ userId }) => {
         status: '',
         seasons: '',
         minEpisodesWatched: '',
-        searchQuery: ''
+        searchQuery: '',
+        minRating: ''
     });
     const [showFilters, setShowFilters] = useState(false);
 
@@ -38,7 +39,8 @@ const SeriesList = ({ userId }) => {
             (filters.minEpisodesWatched === '' ||
                 data.watchedEpisodes >= parseInt(filters.minEpisodesWatched)) &&
             (filters.searchQuery === '' ||
-                data.title.toLowerCase().includes(filters.searchQuery.toLowerCase()))
+                data.title.toLowerCase().includes(filters.searchQuery.toLowerCase())) &&
+            (filters.minRating === '' || (data.rating || 0) === parseInt(filters.minRating))
         );
     });
 
@@ -54,6 +56,10 @@ const SeriesList = ({ userId }) => {
 
     const handleWatchedEpisodesChange = async (id, newCount) => {
         await updateDoc(doc(db, 'series', id), { watchedEpisodes: parseInt(newCount) });
+    };
+
+    const handleRatingChange = async (id, newRating) => {
+        await updateDoc(doc(db, 'series', id), { rating: newRating });
     };
 
     const getStatusColor = (status) => {
@@ -87,7 +93,8 @@ const SeriesList = ({ userId }) => {
             status: '',
             seasons: '',
             minEpisodesWatched: '',
-            searchQuery: ''
+            searchQuery: '',
+            minRating: ''
         });
     };
 
@@ -195,7 +202,6 @@ const SeriesList = ({ userId }) => {
                 </div>
             </div>
 
-            {/* Filter Panel */}
             {showFilters && (
                 <div className="mb-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg shadow">
                     <div className="flex justify-between items-center mb-4">
@@ -216,7 +222,7 @@ const SeriesList = ({ userId }) => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
                             <label className="block text-sm font-medium mb-1 dark:text-gray-300">Status</label>
                             <select
@@ -258,6 +264,40 @@ const SeriesList = ({ userId }) => {
                                 placeholder="Any"
                                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600"
                             />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Min Rating</label>
+                            <div className="flex items-center bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md p-2 h-[42px]">
+                                <div className="flex">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <button
+                                            key={star}
+                                            type="button"
+                                            onClick={() => setFilters(prev => ({
+                                                ...prev,
+                                                minRating: prev.minRating === star.toString() ? '' : star.toString()
+                                            }))}
+                                            className="text-xl focus:outline-none px-1"
+                                        >
+                                            {star <= (filters.minRating ? parseInt(filters.minRating) : 0) ? (
+                                                <span className="text-yellow-400">★</span>
+                                            ) : (
+                                                <span className="text-gray-300">☆</span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                                {filters.minRating && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFilters(prev => ({ ...prev, minRating: '' }))}
+                                        className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                    >
+                                        <FiX className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -309,16 +349,38 @@ const SeriesList = ({ userId }) => {
                                         </p>
                                     </div>
                                     <span className={`text-xs px-1.5 py-0.5 rounded-full ${getStatusColor(data.status)}`}>
-                {getStatusLabel(data.status)}
-            </span>
+                                        {getStatusLabel(data.status)}
+                                    </span>
+                                </div>
+
+                                {/* Rating Stars */}
+                                <div className="mb-2">
+                                    <div className="flex items-center">
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                            <button
+                                                key={star}
+                                                onClick={() => handleRatingChange(doc.id, star)}
+                                                className="text-sm focus:outline-none"
+                                            >
+                                                {star <= (data.rating || 0) ? (
+                                                    <span className="text-yellow-400">★</span>
+                                                ) : (
+                                                    <span className="text-gray-300">☆</span>
+                                                )}
+                                            </button>
+                                        ))}
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                                            ({data.rating || 0}/5)
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {/* Progress Bar */}
                                 <div className="mb-3">
                                     <div className="flex justify-between text-xs mb-0.5">
-                <span className="text-gray-700 dark:text-gray-300">
-                    {data.watchedEpisodes} / {data.totalEpisodes}
-                </span>
+                                        <span className="text-gray-700 dark:text-gray-300">
+                                            {data.watchedEpisodes} / {data.totalEpisodes}
+                                        </span>
                                         <span className="text-gray-700 dark:text-gray-300">{progress}%</span>
                                     </div>
                                     <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
