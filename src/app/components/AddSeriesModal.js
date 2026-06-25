@@ -28,20 +28,51 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
         setFetchError('');
 
         try {
-            const res = await fetch(`/api/fetch-series?query=${encodeURIComponent(imdbInput.trim())}`);
-            const data = await res.json();
+            // 1. Extract the IMDb ID (e.g., tt0903747) using Regex right in the client
+            const match = imdbInput.trim().match(/tt\d+/);
+            if (!match) {
+                throw new Error('Invalid IMDb ID or URL format');
+            }
+            const imdbId = match[0];
 
-            if (!res.ok) {
-                throw new Error(data.error || 'Something went wrong fetching info.');
+            // 2. Query TVmaze's lookup system directly from the browser
+            const lookupResponse = await fetch(`https://api.tvmaze.com/lookup/shows?imdb=${imdbId}`, {
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!lookupResponse.ok) {
+                if (lookupResponse.status === 404) {
+                    throw new Error('Series not found in open databases.');
+                }
+                throw new Error('Metadata server rejected request.');
+            }
+
+            const showData = await lookupResponse.json();
+            const showId = showData.id;
+
+            // 3. Fetch the entire episode map directly from the browser
+            const episodesResponse = await fetch(`https://api.tvmaze.com/shows/${showId}/episodes`);
+            let seasonsCount = 1;
+            let totalEpisodes = 0;
+
+            if (episodesResponse.ok) {
+                const episodes = await episodesResponse.json();
+                totalEpisodes = episodes.length;
+
+                // Extract the highest season integer recorded across the episode timeline
+                const seasonNumbers = episodes.map(ep => ep.season).filter(Boolean);
+                if (seasonNumbers.length > 0) {
+                    seasonsCount = Math.max(...seasonNumbers);
+                }
             }
 
             // Autofill the modal input state elements
             setFormData(prev => ({
                 ...prev,
-                title: data.title,
-                imageUrl: data.imageUrl,
-                seasons: parseInt(data.seasons) || 1,
-                totalEpisodes: parseInt(data.totalEpisodes) || 0
+                title: showData.name || '',
+                imageUrl: showData.image?.original || showData.image?.medium || '',
+                seasons: parseInt(seasonsCount) || 1,
+                totalEpisodes: parseInt(totalEpisodes) || 0
             }));
 
             setImdbInput(''); // Clear the import bar on success
