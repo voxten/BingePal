@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, provider } from '../firebase';
-import { onAuthStateChanged, signInWithRedirect, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 
 const AuthContext = createContext();
 
@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
 
     const login = async () => {
         try {
-            await signInWithRedirect(auth, provider);
+            await signInWithPopup(auth, provider);
         } catch (error) {
             console.error("Login error:", error);
         }
