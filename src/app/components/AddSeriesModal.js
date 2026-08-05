@@ -10,15 +10,18 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
     const [isFetching, setIsFetching] = useState(false);
     const [fetchError, setFetchError] = useState('');
 
-    // Primary form states
+    // Dodano imdbId, tvmazeId oraz watchedEpisodesList do stanu
     const [formData, setFormData] = useState({
         title: '',
         imageUrl: '',
         seasons: 1,
         totalEpisodes: 0,
         watchedEpisodes: 0,
+        watchedEpisodesList: [], // Tu będziemy trzymać ID obejrzanych odcinków
         status: 'plan-to-watch',
-        rating: 0
+        rating: 0,
+        imdbId: '',
+        tvmazeId: ''
     });
 
     const handleFetchImdbData = async () => {
@@ -28,14 +31,12 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
         setFetchError('');
 
         try {
-            // 1. Extract the IMDb ID (e.g., tt0903747) using Regex right in the client
             const match = imdbInput.trim().match(/tt\d+/);
             if (!match) {
                 throw new Error('Invalid IMDb ID or URL format');
             }
             const imdbId = match[0];
 
-            // 2. Query TVmaze's lookup system directly from the browser
             const lookupResponse = await fetch(`https://api.tvmaze.com/lookup/shows?imdb=${imdbId}`, {
                 headers: { 'Accept': 'application/json' }
             });
@@ -50,7 +51,6 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
             const showData = await lookupResponse.json();
             const showId = showData.id;
 
-            // 3. Fetch the entire episode map directly from the browser
             const episodesResponse = await fetch(`https://api.tvmaze.com/shows/${showId}/episodes`);
             let seasonsCount = 1;
             let totalEpisodes = 0;
@@ -59,7 +59,6 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
                 const episodes = await episodesResponse.json();
                 totalEpisodes = episodes.length;
 
-                // Extract the highest season integer recorded across the episode timeline
                 const seasonNumbers = episodes.map(ep => ep.season).filter(Boolean);
                 if (seasonNumbers.length > 0) {
                     seasonsCount = Math.max(...seasonNumbers);
@@ -72,10 +71,14 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
                 title: showData.name || '',
                 imageUrl: showData.image?.original || showData.image?.medium || '',
                 seasons: parseInt(seasonsCount) || 1,
-                totalEpisodes: parseInt(totalEpisodes) || 0
+                totalEpisodes: parseInt(totalEpisodes) || 0,
+                imdbId: imdbId,
+                tvmazeId: showId,
+                watchedEpisodesList: [], // Reset przy nowym imporcie
+                watchedEpisodes: 0
             }));
 
-            setImdbInput(''); // Clear the import bar on success
+            setImdbInput('');
         } catch (err) {
             setFetchError(err.message);
         } finally {
@@ -89,14 +92,12 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
 
-                {/* Header */}
                 <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                     <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Add New Series</h2>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold">✕</button>
                 </div>
 
                 <div className="p-5 overflow-y-auto space-y-5 flex-grow">
-                    {/* IMDb Import Section */}
                     <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl">
                         <label className="block text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-2">
                             Autofill via IMDb Link / ID
@@ -130,7 +131,6 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
 
                     <hr className="border-slate-100 dark:border-slate-800" />
 
-                    {/* Standard Form Inputs */}
                     <div className="space-y-4">
                         <div>
                             <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Series Title (English)</label>
@@ -184,7 +184,6 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
                     </div>
                 </div>
 
-                {/* Footer Controls */}
                 <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
                     <button type="button" onClick={onClose} className="px-4 py-2 border rounded-xl text-sm font-medium dark:border-slate-700 dark:text-slate-300">
                         Cancel
