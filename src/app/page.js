@@ -45,16 +45,16 @@ export default function HomePage() {
 
     return (
         /* The dynamic ${darkMode ? 'dark' : ''} here ensures components inside always inherit the theme toggle state */
-        <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-300 selection:bg-indigo-500 selection:text-white ${darkMode ? 'dark' : ''}`}>
+        <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 selection:bg-indigo-500 selection:text-white ${darkMode ? 'dark' : ''}`}>
 
             {/* Top Navigation Bar */}
-            <nav className="sticky top-0 z-40 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60 transition-colors">
+            <nav className="sticky top-0 z-40 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60">
                 <div className="container mx-auto px-4 h-16 flex items-center justify-between">
 
                     {/* Brand / Logo Info Section */}
                     <div className="flex items-center gap-3.5">
                         <div className="w-9 h-9 relative rounded-xl overflow-hidden shadow-sm bg-gradient-to-tr from-indigo-600 to-violet-500 p-0.5">
-                            <div className="w-full h-full bg-white dark:bg-slate-900 rounded-[10px] flex items-center justify-center transition-colors">
+                            <div className="w-full h-full bg-white dark:bg-slate-900 rounded-[10px] flex items-center justify-center">
                                 <Image
                                     src="https://cms8ydvfu8qmbdmt.public.blob.vercel-storage.com/logo.webp"
                                     alt="BingePal Logo"
