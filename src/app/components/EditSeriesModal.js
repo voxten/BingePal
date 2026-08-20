@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FiX, FiDownload, FiLoader, FiAlertCircle, FiStar } from 'react-icons/fi';
 
@@ -35,7 +35,6 @@ const EditSeriesModal = ({ series, onClose }) => {
                 imdbId: series.imdbId || '',
                 tvmazeId: series.tvmazeId || ''
             });
-            // Jeśli serial ma już imdbId, pokazujemy go w polu inputu
             setImdbInput(series.imdbId || '');
         }
     }, [series]);
@@ -81,9 +80,7 @@ const EditSeriesModal = ({ series, onClose }) => {
                 }
             }
 
-            // UWAGA: Aktualizujemy tylko metadane, nie ruszamy statusu, oceny, czy obejrzanych odcinków (chyba, że przekraczają nowy max)
             setFormData(prev => {
-                // Jeśli po aktualizacji mamy mniej odcinków ogółem niż było obejrzanych, obcinamy obejrzane
                 const safeWatchedEpisodes = prev.watchedEpisodes > totalEpisodes ? totalEpisodes : prev.watchedEpisodes;
 
                 return {
@@ -108,7 +105,34 @@ const EditSeriesModal = ({ series, onClose }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await updateDoc(doc(db, 'series', series.id), formData);
+            const seriesDocId = series.seriesId || series.id;
+            const userSeriesDocId = series.userSeriesId || series.id;
+
+            // 1. Update shared catalog document in 'series'
+            const catalogData = {
+                title: formData.title,
+                imageUrl: formData.imageUrl,
+                seasons: formData.seasons,
+                totalEpisodes: formData.totalEpisodes,
+                imdbId: formData.imdbId || '',
+                tvmazeId: formData.tvmazeId ? formData.tvmazeId.toString() : '',
+                updatedAt: Date.now()
+            };
+            if (seriesDocId) {
+                await setDoc(doc(db, 'series', seriesDocId), catalogData, { merge: true });
+            }
+
+            // 2. Update user's tracking state in 'userSeries'
+            const userSeriesData = {
+                status: formData.status,
+                rating: formData.rating,
+                watchedEpisodes: formData.watchedEpisodes,
+                updatedAt: Date.now()
+            };
+            if (userSeriesDocId) {
+                await updateDoc(doc(db, 'userSeries', userSeriesDocId), userSeriesData);
+            }
+
             onClose();
         } catch (error) {
             console.error('Error updating document: ', error);

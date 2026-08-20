@@ -1,98 +1,53 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
-import { collection, query, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, deleteDoc, doc, updateDoc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import AddSeriesModal from './AddSeriesModal';
 import EditSeriesModal from './EditSeriesModal';
 import EpisodesModal from './EpisodesModal';
+import RecentlyWatched from './RecentlyWatched';
+import { recordWatchedEpisode } from '../services/recentWatchedService';
+import { migrateUserSeries } from '../services/seriesMigrationService';
+import Link from 'next/link';
 import { 
-    FiPlus, 
-    FiEdit2, 
-    FiTrash2, 
     FiFilter, 
-    FiX, 
-    FiStar, 
-    FiSearch, 
     FiShare2, 
     FiCheck, 
-    FiList, 
-    FiRefreshCw, 
-    FiAlertCircle, 
-    FiArrowUp, 
-    FiArrowDown,
-    FiSliders,
-    FiRotateCcw,
-    FiPlay,
-    FiCheckCircle,
-    FiClock,
-    FiPauseCircle,
-    FiXCircle,
-    FiTv,
-    FiGrid,
-    FiSquare,
-    FiChevronDown
+    FiSliders, 
+    FiCompass 
 } from 'react-icons/fi';
 import LoadingSpinner from './LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
+import SearchInput from './ui/SearchInput';
+import LayoutSwitcher from './ui/LayoutSwitcher';
+import Toast from './ui/Toast';
+import SeriesCard from './series/SeriesCard';
+import SeriesFilterDrawer from './series/SeriesFilterDrawer';
+import SyncMissingBanner from './series/SyncMissingBanner';
+import MigrationBanner from './series/MigrationBanner';
+import { STATUS_CONFIG } from './ui/StatusBadge';
 
 const SORT_OPTIONS = [
-    { value: 'title', label: 'Title (Alphabetical)' },
-    { value: 'rating', label: 'Rating' },
-    { value: 'progress', label: 'Progress (%)' },
-    { value: 'watchedEpisodes', label: 'Watched Episodes' },
-    { value: 'totalEpisodes', label: 'Total Episodes' },
-    { value: 'seasons', label: 'Seasons Count' },
+    { label: 'Title (A-Z)', value: 'title' },
+    { label: 'Rating (High to Low)', value: 'rating' },
+    { label: 'Progress (%)', value: 'progress' },
+    { label: 'Watched Episodes', value: 'watchedEpisodes' },
+    { label: 'Total Episodes', value: 'totalEpisodes' },
+    { label: 'Seasons', value: 'seasons' }
 ];
 
-const STATUS_CONFIG = {
-    'watching': {
-        label: 'Watching',
-        icon: FiPlay,
-        pillBg: 'bg-blue-500/20 dark:bg-blue-500/30 text-blue-300 border-blue-400/30',
-        dot: 'bg-blue-400 animate-pulse',
-    },
-    'completed': {
-        label: 'Completed',
-        icon: FiCheckCircle,
-        pillBg: 'bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-300 border-emerald-400/30',
-        dot: 'bg-emerald-400',
-    },
-    'plan-to-watch': {
-        label: 'Plan to Watch',
-        icon: FiClock,
-        pillBg: 'bg-indigo-500/20 dark:bg-indigo-500/30 text-indigo-300 border-indigo-400/30',
-        dot: 'bg-indigo-400',
-    },
-    'on-hold': {
-        label: 'On Hold',
-        icon: FiPauseCircle,
-        pillBg: 'bg-amber-500/20 dark:bg-amber-500/30 text-amber-300 border-amber-400/30',
-        dot: 'bg-amber-400',
-    },
-    'dropped': {
-        label: 'Dropped',
-        icon: FiXCircle,
-        pillBg: 'bg-rose-500/20 dark:bg-rose-500/30 text-rose-300 border-rose-400/30',
-        dot: 'bg-rose-400',
-    },
-};
-
-const SeriesList = ({ userId }) => {
+export default function SeriesList({ userId }) {
     const { user } = useAuth();
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingSeries, setEditingSeries] = useState(null);
     const [trackingSeries, setTrackingSeries] = useState(null);
-    const [copied, setCopied] = useState(false);
-    
-    // View mode: 'vertical' (2:3 poster) or 'wide' (16:10 card)
-    const [cardLayout, setCardLayout] = useState('vertical');
-    
-    // Tracks which card's status picker menu is open
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
+    const [copied, setCopied] = useState(false);
+    const [highlightedSeriesId, setHighlightedSeriesId] = useState(null);
+    const [cardLayout, setCardLayout] = useState('vertical');
 
-    // Filter & Sort state
     const [filters, setFilters] = useState({
         searchQuery: '',
         status: '',
@@ -105,66 +60,180 @@ const SeriesList = ({ userId }) => {
         ratingMax: ''
     });
 
+    const [showFilters, setShowFilters] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncStatus, setSyncStatus] = useState('');
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [migrationMessage, setMigrationMessage] = useState('');
+
     const [sortConfig, setSortConfig] = useState({
         key: 'title',
         direction: 'asc'
     });
 
-    const [showFilters, setShowFilters] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [syncStatus, setSyncStatus] = useState('');
-
     const isOwner = user?.uid === userId;
 
-    const q = query(collection(db, 'series'), where('userId', '==', userId));
-    const [series, loading, error] = useCollection(q);
+    // 1. Stable memoized query for userSeries
+    const userSeriesQuery = useMemo(() => {
+        if (!userId) return null;
+        return query(collection(db, 'userSeries'), where('userId', '==', userId));
+    }, [userId]);
+    const [userSeriesSnap, userLoading, userError] = useCollection(userSeriesQuery);
 
-    const isEmptyCollection = !loading && (!series || series.docs.length === 0);
-    const seriesNeedingSync = series?.docs.filter(doc => !doc.data().tvmazeId) || [];
+    // 2. Stable memoized query for shared series catalog
+    const catalogQuery = useMemo(() => collection(db, 'series'), []);
+    const [catalogSnap, catalogLoading, catalogError] = useCollection(catalogQuery);
 
-    const handleAutoSync = async () => {
-        setIsSyncing(true);
-        for (let i = 0; i < seriesNeedingSync.length; i++) {
-            const docSnap = seriesNeedingSync[i];
-            const data = docSnap.data();
-            setSyncStatus(`Syncing (${i + 1}/${seriesNeedingSync.length}): ${data.title}`);
+    const [hasLegacyDocs, setHasLegacyDocs] = useState(false);
+    const [legacyDocsList, setLegacyDocsList] = useState([]);
 
-            try {
-                const searchRes = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(data.title)}`);
-                const searchData = await searchRes.json();
+    // Check once if legacy unmigrated data exists when userSeries is empty
+    useEffect(() => {
+        if (!userId || !isOwner || userLoading) return;
+        if ((userSeriesSnap?.docs?.length || 0) === 0) {
+            getDocs(query(collection(db, 'series'), where('userId', '==', userId)))
+                .then(snap => {
+                    if (!snap.empty) {
+                        setHasLegacyDocs(true);
+                        setLegacyDocsList(snap.docs);
+                    } else {
+                        setHasLegacyDocs(false);
+                        setLegacyDocsList([]);
+                    }
+                })
+                .catch(() => {
+                    setHasLegacyDocs(false);
+                    setLegacyDocsList([]);
+                });
+        } else {
+            setHasLegacyDocs(false);
+            setLegacyDocsList([]);
+        }
+    }, [userId, isOwner, userLoading, userSeriesSnap]);
 
-                if (searchData && searchData.length > 0) {
-                    const show = searchData[0].show;
-                    const tvmazeId = show.id;
-                    const imdbId = show.externals?.imdb || '';
+    const loading = userLoading || catalogLoading;
+    const error = userError || catalogError;
 
-                    const epRes = await fetch(`https://api.tvmaze.com/shows/${tvmazeId}/episodes`);
-                    const episodes = await epRes.json();
-                    
-                    let watchedCount = data.watchedEpisodes || 0;
-                    if (watchedCount > episodes.length) watchedCount = episodes.length;
-                    
-                    const newWatchedList = Array.from({ length: watchedCount }, (_, index) => index + 1);
-
-                    await updateDoc(doc(db, 'series', docSnap.id), {
-                        tvmazeId: tvmazeId.toString(),
-                        imdbId: imdbId || data.imdbId || '',
-                        totalEpisodes: episodes.length,
-                        watchedEpisodesList: newWatchedList,
-                        watchedEpisodes: watchedCount
-                    });
-                }
-                await new Promise(resolve => setTimeout(resolve, 500));
-            } catch (err) {
-                console.error(`Error auto-syncing ${data.title}:`, err);
+    const allSeries = useMemo(() => {
+        if (userSeriesSnap?.docs && userSeriesSnap.docs.length > 0) {
+            const catalogMap = new Map();
+            if (catalogSnap?.docs) {
+                catalogSnap.docs.forEach(docSnap => {
+                    const data = docSnap.data();
+                    catalogMap.set(docSnap.id, data);
+                    if (data.tvmazeId) catalogMap.set(`tv_${data.tvmazeId}`, data);
+                    if (data.imdbId) catalogMap.set(`imdb_${data.imdbId}`, data);
+                });
             }
+
+            return userSeriesSnap.docs.map(userDoc => {
+                const uData = userDoc.data();
+                const cData = catalogMap.get(uData.seriesId) || {};
+
+                return {
+                    id: userDoc.id,
+                    userSeriesId: userDoc.id,
+                    seriesId: uData.seriesId,
+                    title: cData.title || uData.title || 'Untitled',
+                    imageUrl: cData.imageUrl || uData.imageUrl || '',
+                    imdbId: cData.imdbId || uData.imdbId || '',
+                    tvmazeId: cData.tvmazeId || uData.tvmazeId || '',
+                    totalEpisodes: Number(cData.totalEpisodes ?? uData.totalEpisodes) || 0,
+                    seasons: Number(cData.seasons ?? uData.seasons) || 1,
+                    status: uData.status || 'plan-to-watch',
+                    rating: Number(uData.rating) || 0,
+                    watchedEpisodes: Number(uData.watchedEpisodes) || 0,
+                    watchedEpisodesList: Array.isArray(uData.watchedEpisodesList) ? uData.watchedEpisodesList : [],
+                    userId: uData.userId,
+                    data: function() { return this; }
+                };
+            });
         }
 
-        setSyncStatus('Sync complete!');
-        setTimeout(() => {
+        if (legacyDocsList.length > 0) {
+            return legacyDocsList.map(docSnap => {
+                const data = docSnap.data();
+                return {
+                    id: docSnap.id,
+                    userSeriesId: docSnap.id,
+                    seriesId: docSnap.id,
+                    title: data.title || 'Untitled',
+                    imageUrl: data.imageUrl || '',
+                    imdbId: data.imdbId || '',
+                    tvmazeId: data.tvmazeId || '',
+                    totalEpisodes: Number(data.totalEpisodes) || 0,
+                    seasons: Number(data.seasons) || 1,
+                    status: data.status || 'plan-to-watch',
+                    rating: Number(data.rating) || 0,
+                    watchedEpisodes: Number(data.watchedEpisodes) || 0,
+                    watchedEpisodesList: Array.isArray(data.watchedEpisodesList) ? data.watchedEpisodesList : [],
+                    userId: data.userId,
+                    data: function() { return this; }
+                };
+            });
+        }
+
+        return [];
+    }, [userSeriesSnap, catalogSnap, legacyDocsList]);
+
+    const isEmptyCollection = !loading && allSeries.length === 0;
+
+    const seriesNeedingSync = useMemo(() => {
+        if (!isOwner) return [];
+        return allSeries.filter(d => !d.tvmazeId);
+    }, [allSeries, isOwner]);
+
+    const handleRunMigration = async () => {
+        if (!userId) return;
+        setIsMigrating(true);
+        setMigrationMessage('');
+        try {
+            const res = await migrateUserSeries(userId);
+            setMigrationMessage(`Migration complete! Successfully migrated ${res.migratedCount} series.`);
+            setHasLegacyDocs(false);
+            setLegacyDocsList([]);
+        } catch (err) {
+            console.error('Migration failed:', err);
+            setMigrationMessage('Migration failed: ' + err.message);
+        } finally {
+            setIsMigrating(false);
+        }
+    };
+
+    const handleAutoSync = async () => {
+        if (isSyncing || seriesNeedingSync.length === 0) return;
+        setIsSyncing(true);
+        setSyncStatus('Searching TVMaze API...');
+
+        try {
+            let fixed = 0;
+            for (const item of seriesNeedingSync) {
+                setSyncStatus(`Searching: ${item.title}...`);
+                const res = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(item.title)}`);
+                if (res.ok) {
+                    const tvShow = await res.json();
+                    const updates = {
+                        tvmazeId: tvShow.id.toString(),
+                        imdbId: tvShow.externals?.imdb || item.imdbId || '',
+                        imageUrl: item.imageUrl || tvShow.image?.original || tvShow.image?.medium || ''
+                    };
+                    
+                    if (item.seriesId) {
+                        await updateDoc(doc(db, 'series', item.seriesId), updates).catch(() => {});
+                    }
+                    await updateDoc(doc(db, 'userSeries', item.id), updates).catch(() => {});
+                    fixed++;
+                }
+                await new Promise(r => setTimeout(r, 250));
+            }
+            setSyncStatus(`Synced ${fixed} of ${seriesNeedingSync.length} series!`);
+            setTimeout(() => setSyncStatus(''), 4000);
+        } catch (e) {
+            console.error('Sync error:', e);
+            setSyncStatus('Error syncing with TVMaze');
+        } finally {
             setIsSyncing(false);
-            setSyncStatus('');
-        }, 2000);
+        }
     };
 
     const activeFiltersCount = useMemo(() => {
@@ -178,40 +247,43 @@ const SeriesList = ({ userId }) => {
     }, [filters]);
 
     const processedSeries = useMemo(() => {
-        if (!series?.docs) return [];
-
-        return series.docs
-            .filter(docSnap => {
-                const data = docSnap.data();
-                const currentRating = data.rating || 0;
-                const watched = data.watchedEpisodes || 0;
-                const total = data.totalEpisodes || 0;
-                const progress = total > 0 ? Math.round((watched / total) * 100) : 0;
-
-                if (filters.searchQuery.trim() && !data.title?.toLowerCase().includes(filters.searchQuery.toLowerCase().trim())) {
+        return allSeries
+            .filter((series) => {
+                const title = series.title || '';
+                const query = filters.searchQuery.toLowerCase().trim();
+                
+                if (query && !title.toLowerCase().includes(query)) {
                     return false;
                 }
-                if (filters.status && data.status !== filters.status) {
+
+                if (filters.status && series.status !== filters.status) {
                     return false;
                 }
-                if (filters.progressStatus === 'not-started' && watched > 0) return false;
-                if (filters.progressStatus === 'in-progress' && (progress === 0 || progress >= 100)) return false;
-                if (filters.progressStatus === 'completed' && progress < 100) return false;
 
-                if (filters.seasonsMin !== '' && (data.seasons || 0) < parseInt(filters.seasonsMin)) return false;
-                if (filters.seasonsMax !== '' && (data.seasons || 0) > parseInt(filters.seasonsMax)) return false;
+                const total = series.totalEpisodes || 0;
+                const watched = series.watchedEpisodes || 0;
+                const percent = total > 0 ? (watched / total) * 100 : 0;
 
-                if (filters.episodesMin !== '' && watched < parseInt(filters.episodesMin)) return false;
-                if (filters.episodesMax !== '' && watched > parseInt(filters.episodesMax)) return false;
+                if (filters.progressStatus) {
+                    if (filters.progressStatus === 'not-started' && watched !== 0) return false;
+                    if (filters.progressStatus === 'in-progress' && (percent <= 0 || percent >= 100)) return false;
+                    if (filters.progressStatus === 'completed' && percent < 100) return false;
+                }
 
-                if (filters.ratingMin !== '' && currentRating < parseInt(filters.ratingMin)) return false;
-                if (filters.ratingMax !== '' && currentRating > parseInt(filters.ratingMax)) return false;
+                const seasons = series.seasons || 1;
+                if (filters.seasonsMin && seasons < parseInt(filters.seasonsMin)) return false;
+                if (filters.seasonsMax && seasons > parseInt(filters.seasonsMax)) return false;
+
+                if (filters.episodesMin && watched < parseInt(filters.episodesMin)) return false;
+                if (filters.episodesMax && watched > parseInt(filters.episodesMax)) return false;
+
+                const rating = series.rating || 0;
+                if (filters.ratingMin && rating < parseInt(filters.ratingMin)) return false;
+                if (filters.ratingMax && rating > parseInt(filters.ratingMax)) return false;
 
                 return true;
             })
-            .sort((aDoc, bDoc) => {
-                const a = aDoc.data();
-                const b = bDoc.data();
+            .sort((a, b) => {
                 let aVal, bVal;
 
                 switch (sortConfig.key) {
@@ -253,7 +325,7 @@ const SeriesList = ({ userId }) => {
                     return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
                 }
             });
-    }, [series, filters, sortConfig]);
+    }, [allSeries, filters, sortConfig]);
 
     const handleCopyLink = async () => {
         try {
@@ -266,19 +338,51 @@ const SeriesList = ({ userId }) => {
         }
     };
 
-    const handleDelete = async (id) => {
+    const handleDelete = async (userSeriesId) => {
         if (!isOwner) return;
-        if (window.confirm('Are you sure you want to delete this series?')) {
-            await deleteDoc(doc(db, 'series', id));
+        if (window.confirm('Are you sure you want to delete this series from your collection?')) {
+            try {
+                await deleteDoc(doc(db, 'userSeries', userSeriesId));
+            } catch {
+                try { await deleteDoc(doc(db, 'series', userSeriesId)); } catch (e) { console.error(e); }
+            }
         }
     };
 
-    const handleStatusChange = async (id, newStatus) => {
+    const handleStatusChange = async (userSeriesId, newStatus) => {
         if (!isOwner) return;
-        await updateDoc(doc(db, 'series', id), { status: newStatus });
+        try {
+            await updateDoc(doc(db, 'userSeries', userSeriesId), { status: newStatus });
+        } catch {
+            try { await updateDoc(doc(db, 'series', userSeriesId), { status: newStatus }); } catch (e) { console.error(e); }
+        }
     };
 
-    const handleWatchedEpisodesChange = async (seriesId, newCount, seriesData) => {
+    const handleJumpToSeries = (seriesId) => {
+        setHighlightedSeriesId(seriesId);
+        const matching = allSeries.find(d => d.id === seriesId || d.userSeriesId === seriesId || d.seriesId === seriesId);
+        if (matching) {
+            if (filters.searchQuery && !matching.title?.toLowerCase().includes(filters.searchQuery.toLowerCase().trim())) {
+                setFilters(prev => ({ ...prev, searchQuery: '' }));
+            }
+            if (filters.status && matching.status !== filters.status) {
+                setFilters(prev => ({ ...prev, status: '' }));
+            }
+        }
+        
+        setTimeout(() => {
+            const element = document.getElementById(`series-card-${seriesId}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 50);
+
+        setTimeout(() => {
+            setHighlightedSeriesId(prev => (prev === seriesId ? null : prev));
+        }, 2500);
+    };
+
+    const handleWatchedEpisodesChange = async (userSeriesId, newCount, seriesData) => {
         if (!isOwner) return;
 
         let count = parseInt(newCount) || 0;
@@ -308,28 +412,49 @@ const SeriesList = ({ userId }) => {
             newList.splice(newList.length - episodesToRemove, episodesToRemove);
         }
 
-        await updateDoc(doc(db, 'series', seriesId), { 
+        const updatePayload = { 
             watchedEpisodes: count,
             watchedEpisodesList: newList,
             status: count === seriesData.totalEpisodes && seriesData.totalEpisodes > 0 ? 'completed' : seriesData.status
-        });
+        };
+
+        try {
+            await updateDoc(doc(db, 'userSeries', userSeriesId), updatePayload);
+        } catch {
+            try { await updateDoc(doc(db, 'series', userSeriesId), updatePayload); } catch (e) { console.error(e); }
+        }
+
+        if (count > currentList.length) {
+            recordWatchedEpisode({
+                userId,
+                userSeriesId,
+                seriesId: seriesData.seriesId || userSeriesId,
+                seriesTitle: seriesData.title,
+                imageUrl: seriesData.imageUrl,
+                episodeNumber: count,
+                tvmazeId: seriesData.tvmazeId,
+                totalEpisodes: seriesData.totalEpisodes,
+                watchedEpisodes: count
+            });
+        }
     };
 
-    const handleRatingChange = async (id, newRating) => {
+    const handleRatingChange = async (userSeriesId, newRating) => {
         if (!isOwner) return;
-        await updateDoc(doc(db, 'series', id), { rating: newRating });
-    };
-
-    const getProgressColor = (progress) => {
-        if (progress <= 25) return { bar: 'from-rose-500 to-amber-500', text: 'text-rose-500 dark:text-rose-400' };
-        if (progress <= 60) return { bar: 'from-amber-500 to-yellow-500', text: 'text-amber-500 dark:text-amber-400' };
-        if (progress <= 99) return { bar: 'from-blue-500 to-indigo-500', text: 'text-indigo-500 dark:text-indigo-400' };
-        return { bar: 'from-emerald-500 to-teal-400', text: 'text-emerald-500 dark:text-emerald-400' };
+        try {
+            await updateDoc(doc(db, 'userSeries', userSeriesId), { rating: newRating });
+        } catch {
+            try { await updateDoc(doc(db, 'series', userSeriesId), { rating: newRating }); } catch (e) { console.error(e); }
+        }
     };
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
         setFilters(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleRemoveFilter = (key, value) => {
+        setFilters(prev => ({ ...prev, [key]: value }));
     };
 
     const resetFilters = () => {
@@ -378,13 +503,17 @@ const SeriesList = ({ userId }) => {
                 <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
                     {isOwner && (
                         <>
-                            <button onClick={() => setIsAddModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-medium px-6 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20 text-sm w-full sm:w-auto">
-                                Add your first series
-                            </button>
+                            <Link 
+                                href="/explore" 
+                                className="bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-medium px-6 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20 text-sm w-full sm:w-auto flex items-center justify-center gap-2"
+                            >
+                                <FiCompass className="w-4 h-4" />
+                                <span>Explore & Add First Series</span>
+                            </Link>
                             <AddSeriesModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} userId={userId} />
                         </>
                     )}
-                    <button onClick={handleCopyLink} className={`flex items-center justify-center gap-2 font-medium px-6 py-2.5 rounded-xl transition-all border text-sm w-full sm:w-auto ${copied ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
+                    <button onClick={handleCopyLink} className={`flex items-center justify-center gap-2 font-medium px-6 py-2.5 rounded-xl transition-all border text-sm w-full sm:w-auto cursor-pointer ${copied ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
                         {copied ? <FiCheck className="w-4 h-4" /> : <FiShare2 className="w-4 h-4" />}
                         <span>{copied ? 'Link Copied!' : 'Copy Collection Link'}</span>
                     </button>
@@ -394,683 +523,192 @@ const SeriesList = ({ userId }) => {
     }
 
     return (
-        <>
-            {isOwner && seriesNeedingSync.length > 0 && (
-                <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 dark:bg-indigo-950/20 dark:border-indigo-900/40">
-                    <div className="flex items-start gap-3">
-                        <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg text-indigo-600 dark:text-indigo-400 shrink-0">
-                            <FiAlertCircle className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <h4 className="font-bold text-indigo-900 dark:text-indigo-200 text-sm">Action Required: Missing IDs</h4>
-                            <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">
-                                You have <b>{seriesNeedingSync.length}</b> series missing TVMaze/IMDb IDs required for the new Episode Tracker.
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={handleAutoSync}
-                        disabled={isSyncing}
-                        className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm shrink-0"
-                    >
-                        <FiRefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        <span>{isSyncing ? syncStatus : 'Auto-Fix All Missing'}</span>
-                    </button>
+        <div className="space-y-6">
+            {/* Action Banner for Missing TVMaze/IMDb IDs */}
+            {isOwner && (
+                <SyncMissingBanner
+                    missingCount={seriesNeedingSync.length}
+                    isSyncing={isSyncing}
+                    syncStatus={syncStatus}
+                    onAutoSync={handleAutoSync}
+                />
+            )}
+
+            {/* Optional Migration Banner if unmigrated legacy docs exist */}
+            {hasLegacyDocs && (
+                <MigrationBanner
+                    isMigrating={isMigrating}
+                    onRunMigration={handleRunMigration}
+                />
+            )}
+
+            {migrationMessage && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-semibold">
+                    {migrationMessage}
                 </div>
             )}
 
+            {/* Recently Watched Shelf */}
+            <RecentlyWatched 
+                userId={userId} 
+                isOwner={isOwner} 
+                allSeries={allSeries} 
+                onOpenTracker={(seriesData) => setTrackingSeries(seriesData)} 
+                onJumpToSeries={handleJumpToSeries} 
+            />
+
             {/* Top Control Bar */}
-            <div className="mb-6">
-                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
+            <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
+                
+                {/* Reusable Search Field */}
+                <SearchInput
+                    value={filters.searchQuery}
+                    onChange={(e) => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
+                    onClear={() => setFilters(prev => ({ ...prev, searchQuery: '' }))}
+                    placeholder={isOwner ? "Search by title..." : "Search this collection..."}
+                    className="lg:max-w-md"
+                />
+
+                {/* Action Controls & Layout Switcher */}
+                <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center justify-end">
                     
-                    {/* Search Field */}
-                    <div className="relative flex-grow lg:max-w-md group">
-                        <input
-                            type="text"
-                            name="searchQuery"
-                            value={filters.searchQuery}
-                            onChange={handleFilterChange}
-                            placeholder={isOwner ? "Search by title..." : "Search this collection..."}
-                            className="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 shadow-sm text-sm dark:text-slate-100 placeholder:text-slate-400"
-                        />
-                        <FiSearch className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                        {filters.searchQuery && (
-                            <button 
-                                onClick={() => setFilters(prev => ({ ...prev, searchQuery: '' }))}
-                                className="absolute right-3 top-3 p-0.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
-                            >
-                                <FiX className="w-3.5 h-3.5" />
-                            </button>
+                    {/* Reusable Layout Switcher */}
+                    <LayoutSwitcher
+                        cardLayout={cardLayout}
+                        setCardLayout={setCardLayout}
+                    />
+
+                    {/* Share Button */}
+                    <button 
+                        onClick={handleCopyLink} 
+                        className={`flex items-center justify-center gap-2 font-medium px-4 h-[42px] rounded-xl transition-all border text-sm w-full sm:w-auto cursor-pointer ${
+                            copied 
+                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm' 
+                                : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm'
+                        }`}
+                    >
+                        {copied ? <FiCheck className="w-4 h-4 text-emerald-500" /> : <FiShare2 className="w-4 h-4" />}
+                        <span>{copied ? 'Copied!' : 'Share'}</span>
+                    </button>
+
+                    {/* Filters & Sort Toggle Button */}
+                    <button 
+                        onClick={() => setShowFilters(!showFilters)} 
+                        className={`relative flex items-center justify-center gap-2 font-medium px-4 h-[42px] rounded-xl transition-all w-full sm:w-auto border text-sm shadow-sm cursor-pointer ${
+                            showFilters || activeFiltersCount > 0
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300' 
+                                : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}
+                    >
+                        <FiSliders className="w-4 h-4" />
+                        <span>Filters & Sort</span>
+                        {activeFiltersCount > 0 && (
+                            <span className="ml-1 px-1.5 py-0.2 text-[11px] font-bold rounded-full bg-indigo-600 text-white">
+                                {activeFiltersCount}
+                            </span>
                         )}
-                    </div>
-
-                    {/* Action Controls & Layout Switcher */}
-                    <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center justify-end">
-                        
-                        {/* Layout Switcher */}
-                        <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-sm h-[42px] w-full sm:w-auto">
-                            <button
-                                type="button"
-                                onClick={() => setCardLayout('vertical')}
-                                className={`flex-1 sm:flex-initial h-full px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                                    cardLayout === 'vertical'
-                                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs'
-                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                }`}
-                                title="Poster View (2:3)"
-                            >
-                                <FiSquare className="w-3.5 h-3.5" />
-                                <span>Poster</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setCardLayout('wide')}
-                                className={`flex-1 sm:flex-initial h-full px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                                    cardLayout === 'wide'
-                                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs'
-                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                }`}
-                                title="Wide View (Landscape)"
-                            >
-                                <FiGrid className="w-3.5 h-3.5" />
-                                <span>Wide</span>
-                            </button>
-                        </div>
-
-                        <button 
-                            onClick={handleCopyLink} 
-                            className={`flex items-center justify-center gap-2 font-medium px-4 h-[42px] rounded-xl transition-all border text-sm w-full sm:w-auto ${
-                                copied 
-                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm' 
-                                    : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm'
-                            }`}
-                        >
-                            {copied ? <FiCheck className="w-4 h-4 text-emerald-500" /> : <FiShare2 className="w-4 h-4" />}
-                            <span>{copied ? 'Copied!' : 'Share'}</span>
-                        </button>
-
-                        <button 
-                            onClick={() => setShowFilters(!showFilters)} 
-                            className={`relative flex items-center justify-center gap-2 font-medium px-4 h-[42px] rounded-xl transition-all w-full sm:w-auto border text-sm shadow-sm ${
-                                showFilters || activeFiltersCount > 0
-                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300' 
-                                    : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                            }`}
-                        >
-                            <FiSliders className="w-4 h-4" />
-                            <span>Filters & Sort</span>
-                            {activeFiltersCount > 0 && (
-                                <span className="ml-1 px-1.5 py-0.2 text-[11px] font-bold rounded-full bg-indigo-600 text-white">
-                                    {activeFiltersCount}
-                                </span>
-                            )}
-                        </button>
-
-                        {isOwner && (
-                            <button 
-                                onClick={() => setIsAddModalOpen(true)} 
-                                className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 h-[42px] rounded-xl transition-all active:scale-98 shadow-sm shadow-indigo-500/15 text-sm w-full sm:w-auto"
-                            >
-                                <FiPlus className="w-4 h-4" />
-                                <span>Add Series</span>
-                            </button>
-                        )}
-
-
-                    </div>
+                    </button>
                 </div>
             </div>
 
-            {/* Expanded Filters Drawer */}
-            {showFilters && (
-                <div className="mb-6 p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-none transition-all animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-2">
-                            <FiFilter className="w-4 h-4 text-indigo-500" />
-                            <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">Filter & Sort Options</h3>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <button 
-                                onClick={resetFilters} 
-                                className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors"
-                            >
-                                <FiRotateCcw className="w-3.5 h-3.5" />
-                                <span>Reset All</span>
-                            </button>
-                            <button 
-                                onClick={() => setShowFilters(false)} 
-                                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                            >
-                                <FiX className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                Sort By
-                            </label>
-                            <div className="flex items-center gap-2">
-                                <select 
-                                    value={sortConfig.key} 
-                                    onChange={(e) => setSortConfig(prev => ({ ...prev, key: e.target.value }))}
-                                    className="flex-grow px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-semibold text-slate-700 dark:text-slate-200 h-[40px]"
-                                >
-                                    {SORT_OPTIONS.map(opt => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={toggleSortDirection}
-                                    title={sortConfig.direction === 'asc' ? 'Ascending Order' : 'Descending Order'}
-                                    className="h-[40px] px-3 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors shrink-0"
-                                >
-                                    {sortConfig.direction === 'asc' ? (
-                                        <FiArrowUp className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                                    ) : (
-                                        <FiArrowDown className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                Status
-                            </label>
-                            <select 
-                                name="status" 
-                                value={filters.status} 
-                                onChange={handleFilterChange} 
-                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-semibold text-slate-700 dark:text-slate-200 h-[40px]"
-                            >
-                                <option value="">All Statuses</option>
-                                <option value="plan-to-watch">Plan to Watch</option>
-                                <option value="watching">Watching</option>
-                                <option value="completed">Completed</option>
-                                <option value="on-hold">On Hold</option>
-                                <option value="dropped">Dropped</option>
-                            </select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                Progress
-                            </label>
-                            <select 
-                                name="progressStatus" 
-                                value={filters.progressStatus} 
-                                onChange={handleFilterChange} 
-                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-semibold text-slate-700 dark:text-slate-200 h-[40px]"
-                            >
-                                <option value="">Any Progress</option>
-                                <option value="not-started">Not Started (0%)</option>
-                                <option value="in-progress">In Progress (1-99%)</option>
-                                <option value="completed">Finished (100%)</option>
-                            </select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                Seasons Range
-                            </label>
-                            <div className="flex items-center gap-1.5">
-                                <input 
-                                    type="number" 
-                                    name="seasonsMin" 
-                                    value={filters.seasonsMin} 
-                                    onChange={handleFilterChange} 
-                                    min="0" 
-                                    placeholder="Min" 
-                                    className="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-semibold h-[40px] text-slate-700 dark:text-slate-200" 
-                                />
-                                <span className="text-slate-400 font-medium text-xs">-</span>
-                                <input 
-                                    type="number" 
-                                    name="seasonsMax" 
-                                    value={filters.seasonsMax} 
-                                    onChange={handleFilterChange} 
-                                    min="0" 
-                                    placeholder="Max" 
-                                    className="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-semibold h-[40px] text-slate-700 dark:text-slate-200" 
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                Watched Eps Range
-                            </label>
-                            <div className="flex items-center gap-1.5">
-                                <input 
-                                    type="number" 
-                                    name="episodesMin" 
-                                    value={filters.episodesMin} 
-                                    onChange={handleFilterChange} 
-                                    min="0" 
-                                    placeholder="Min" 
-                                    className="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-semibold h-[40px] text-slate-700 dark:text-slate-200" 
-                                />
-                                <span className="text-slate-400 font-medium text-xs">-</span>
-                                <input 
-                                    type="number" 
-                                    name="episodesMax" 
-                                    value={filters.episodesMax} 
-                                    onChange={handleFilterChange} 
-                                    min="0" 
-                                    placeholder="Max" 
-                                    className="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-semibold h-[40px] text-slate-700 dark:text-slate-200" 
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5 sm:col-span-2 lg:col-span-3 xl:col-span-1">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                Rating (Stars)
-                            </label>
-                            <div className="flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 h-[38px]">
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Min</span>
-                                    <div className="flex gap-1">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <button
-                                                key={`min-${star}`}
-                                                type="button"
-                                                onClick={() => setFilters(prev => ({
-                                                    ...prev,
-                                                    ratingMin: prev.ratingMin === star.toString() ? '' : star.toString()
-                                                }))}
-                                                className="focus:outline-none transition-transform active:scale-125 p-0.5"
-                                            >
-                                                <FiStar className={`w-3.5 h-3.5 ${star <= (filters.ratingMin ? parseInt(filters.ratingMin) : 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`} />
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 h-[38px]">
-                                    <span className="text-[10px] font-bold uppercase text-slate-400">Max</span>
-                                    <div className="flex gap-1">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <button
-                                                key={`max-${star}`}
-                                                type="button"
-                                                onClick={() => setFilters(prev => ({
-                                                    ...prev,
-                                                    ratingMax: prev.ratingMax === star.toString() ? '' : star.toString()
-                                                }))}
-                                                className="focus:outline-none transition-transform active:scale-125 p-0.5"
-                                            >
-                                                <FiStar className={`w-3.5 h-3.5 ${star <= (filters.ratingMax ? parseInt(filters.ratingMax) : 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`} />
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-            )}
-
-            {/* Active Filters Dismissible Pills Bar */}
-            {activeFiltersCount > 0 && (
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <span className="text-xs font-semibold text-slate-400">Active filters:</span>
-                    
-                    {filters.status && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                            Status: {STATUS_CONFIG[filters.status]?.label || filters.status}
-                            <button onClick={() => setFilters(prev => ({ ...prev, status: '' }))} className="hover:text-indigo-900">
-                                <FiX className="w-3 h-3" />
-                            </button>
-                        </span>
-                    )}
-
-                    {filters.progressStatus && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                            Progress: {filters.progressStatus}
-                            <button onClick={() => setFilters(prev => ({ ...prev, progressStatus: '' }))} className="hover:text-indigo-900">
-                                <FiX className="w-3 h-3" />
-                            </button>
-                        </span>
-                    )}
-
-                    {(filters.seasonsMin || filters.seasonsMax) && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                            Seasons: {filters.seasonsMin || '0'} - {filters.seasonsMax || '∞'}
-                            <button onClick={() => setFilters(prev => ({ ...prev, seasonsMin: '', seasonsMax: '' }))} className="hover:text-indigo-900">
-                                <FiX className="w-3 h-3" />
-                            </button>
-                        </span>
-                    )}
-
-                    {(filters.episodesMin || filters.episodesMax) && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                            Eps: {filters.episodesMin || '0'} - {filters.episodesMax || '∞'}
-                            <button onClick={() => setFilters(prev => ({ ...prev, episodesMin: '', episodesMax: '' }))} className="hover:text-indigo-900">
-                                <FiX className="w-3 h-3" />
-                            </button>
-                        </span>
-                    )}
-
-                    {(filters.ratingMin || filters.ratingMax) && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                            Rating: {filters.ratingMin ? `${filters.ratingMin}★` : '1★'} - {filters.ratingMax ? `${filters.ratingMax}★` : '5★'}
-                            <button onClick={() => setFilters(prev => ({ ...prev, ratingMin: '', ratingMax: '' }))} className="hover:text-indigo-900">
-                                <FiX className="w-3 h-3" />
-                            </button>
-                        </span>
-                    )}
-
-                    <button 
-                        onClick={resetFilters} 
-                        className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 ml-1 underline decoration-dotted"
-                    >
-                        Clear All
-                    </button>
-                </div>
-            )}
+            {/* Reusable Expanded Filters Drawer & Active Filters Pills */}
+            <SeriesFilterDrawer
+                isOpen={showFilters}
+                onClose={() => setShowFilters(false)}
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                sortConfig={sortConfig}
+                onSortChange={(newKey) => setSortConfig(prev => ({ ...prev, key: newKey }))}
+                onToggleSortDirection={toggleSortDirection}
+                sortOptions={SORT_OPTIONS}
+                onReset={resetFilters}
+                activeFiltersCount={activeFiltersCount}
+                onRemoveFilter={handleRemoveFilter}
+            />
 
             {/* Results Count Info */}
-            <div className="mb-4 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
                 <div>
-                    Showing <span className="font-bold text-slate-800 dark:text-slate-200">{processedSeries.length}</span> of {series?.docs.length} series
+                    Showing <span className="font-bold text-slate-800 dark:text-slate-200">{processedSeries.length}</span> of {allSeries.length} series
                 </div>
                 <div className="text-[11px] text-slate-400">
                     Sorted by: <span className="font-semibold text-slate-600 dark:text-slate-300">{SORT_OPTIONS.find(o => o.value === sortConfig.key)?.label}</span> ({sortConfig.direction.toUpperCase()})
                 </div>
             </div>
 
-            {/* Series Cards Grid */}
+            {/* Series Cards Grid with SeriesCard */}
             <div className={
                 cardLayout === 'vertical'
                     ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5"
                     : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5"
             }>
-                {processedSeries.map((docData) => {
-                    const data = docData.data();
-                    const totalEps = data.totalEpisodes || 0;
-                    const watchedEps = data.watchedEpisodes || 0;
-                    const progress = totalEps > 0 ? Math.min(Math.round((watchedEps / totalEps) * 100), 100) : 0;
-                    const progressColors = getProgressColor(progress);
-                    
-                    const statusMeta = STATUS_CONFIG[data.status] || {
-                        label: data.status || 'Unknown',
-                        icon: FiClock,
-                        pillBg: 'bg-slate-500/20 text-slate-300 border-slate-400/30',
-                        dot: 'bg-slate-400',
-                    };
-                    const StatusIcon = statusMeta.icon;
-
-                    return (
-                        <div 
-                            key={docData.id} 
-                            className="group relative flex flex-col bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl shadow-sm hover:shadow-xl hover:border-slate-300 dark:hover:border-slate-700 transition-[box-shadow,border-color] duration-200"
-                        >
-                            {/* Card Poster Header */}
-                            <div className={`relative overflow-hidden rounded-t-2xl bg-slate-950 ${
-                                cardLayout === 'vertical' 
-                                    ? 'aspect-[2/3]' 
-                                    : 'aspect-[16/10] sm:aspect-[4/3]'
-                            }`}>
-                                <img
-                                    src={data.imageUrl || 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Placeholder_view_vector.svg/1280px-Placeholder_view_vector.svg.png'}
-                                    alt={data.title}
-                                    className="w-full h-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105 opacity-90 group-hover:opacity-100"
-                                    onError={(e) => { e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Placeholder_view_vector.svg/1280px-Placeholder_view_vector.svg.png'; }}
-                                />
-
-                                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-black/20" />
-
-                                {/* Floating Badges */}
-                                <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
-                                    <div 
-                                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md border shadow-lg ${statusMeta.pillBg}`}
-                                        title={`Status: ${statusMeta.label}`}
-                                    >
-                                        <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />
-                                        <StatusIcon className="w-3.5 h-3.5 shrink-0" />
-                                        <span className="text-[11px] font-bold tracking-wide">
-                                            {statusMeta.label}
-                                        </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-1 px-2 py-1 rounded-full backdrop-blur-md bg-black/60 border border-white/10 text-amber-400 text-[11px] font-bold shadow-lg">
-                                        <FiStar className="w-3 h-3 fill-amber-400 text-amber-400" />
-                                        <span>{data.rating ? Number(data.rating).toFixed(1) : '—'}</span>
-                                    </div>
-                                </div>
-
-                                {/* Poster Bottom Details */}
-                                <div className="absolute bottom-2.5 left-3 right-3 text-white">
-                                    <h3 className="text-base font-bold tracking-tight leading-tight drop-shadow truncate mb-0.5">
-                                        {data.title}
-                                    </h3>
-                                    <div className="flex items-center gap-2 text-[11px] text-slate-300 font-medium">
-                                        <span className="flex items-center gap-1">
-                                            <FiTv className="w-3 h-3 text-slate-400" />
-                                            {data.seasons || 1} {data.seasons === 1 ? 'Season' : 'Seasons'}
-                                        </span>
-                                        <span>•</span>
-                                        <span>{totalEps} Episodes</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Card Content & Tracking Area */}
-                            <div className="p-3.5 flex flex-col flex-grow justify-between gap-3 bg-white dark:bg-slate-900 rounded-b-2xl">
-                                
-                                {/* Progress Bar & Episode Count */}
-                                <div className="space-y-1.5">
-                                    <div className="flex justify-between items-center text-xs font-semibold">
-                                        <span className="text-slate-600 dark:text-slate-400">
-                                            <span className="text-slate-900 dark:text-slate-100 font-bold">{watchedEps}</span>
-                                            <span className="text-slate-300 dark:text-slate-600 mx-1">/</span>
-                                            {totalEps} eps
-                                        </span>
-                                        <span className={`font-bold transition-colors ${progressColors.text}`}>
-                                            {progress}%
-                                        </span>
-                                    </div>
-
-                                    <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden shadow-inner">
-                                        <div 
-                                            className={`h-full rounded-full bg-gradient-to-r ${progressColors.bar} transition-all duration-500 ease-out`} 
-                                            style={{ width: `${progress}%` }} 
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Episode Stepper & Interactive Status Menu */}
-                                {isOwner ? (
-                                    <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                                        <div className="flex items-center gap-2">
-                                            {/* Compact Numeric Stepper */}
-                                            <div className="shrink-0 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl p-1 shadow-sm h-[38px]">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleWatchedEpisodesChange(docData.id, watchedEps - 1, data)}
-                                                    disabled={watchedEps <= 0}
-                                                    className="w-6 h-6 flex items-center justify-center font-bold text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all shadow-xs"
-                                                >
-                                                    -
-                                                </button>
-
-                                                <div className="flex items-center justify-center px-1">
-                                                    <input
-                                                        type="number"
-                                                        value={watchedEps}
-                                                        onChange={(e) => handleWatchedEpisodesChange(docData.id, e.target.value, data)}
-                                                        min="0"
-                                                        max={totalEps}
-                                                        className="w-8 text-center bg-transparent text-slate-800 dark:text-white font-bold text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                    />
-                                                </div>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleWatchedEpisodesChange(docData.id, watchedEps + 1, data)}
-                                                    disabled={watchedEps >= totalEps}
-                                                    className="w-6 h-6 flex items-center justify-center font-bold text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all shadow-xs"
-                                                >
-                                                    +
-                                                </button>
-                                            </div>
-
-                                            {/* Centered Custom Status Picker Dropdown */}
-                                            <div className="relative flex-1 min-w-0">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setOpenStatusMenuId(openStatusMenuId === docData.id ? null : docData.id)}
-                                                    className="relative w-full h-[38px] px-6 flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-xs"
-                                                >
-                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusMeta.dot}`} />
-                                                    <span className="truncate whitespace-nowrap text-xs font-semibold tracking-tight">
-                                                        {statusMeta.label}
-                                                    </span>
-                                                    <FiChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${openStatusMenuId === docData.id ? 'rotate-180 text-indigo-500' : ''}`} />
-                                                </button>
-
-                                                {/* Floating Status Options Menu */}
-                                                {openStatusMenuId === docData.id && (
-                                                    <>
-                                                        <div 
-                                                            className="fixed inset-0 z-40" 
-                                                            onClick={() => setOpenStatusMenuId(null)} 
-                                                        />
-                                                        <div className="absolute right-0 bottom-[calc(100%+6px)] z-50 min-w-[155px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
-                                                            {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-                                                                const OptionIcon = config.icon;
-                                                                const isSelected = data.status === key;
-                                                                return (
-                                                                    <button
-                                                                        key={key}
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            handleStatusChange(docData.id, key);
-                                                                            setOpenStatusMenuId(null);
-                                                                        }}
-                                                                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                                                                            isSelected 
-                                                                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 font-bold' 
-                                                                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
-                                                                        }`}
-                                                                    >
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${config.dot}`} />
-                                                                            <OptionIcon className="w-3.5 h-3.5 shrink-0" />
-                                                                            <span className="whitespace-nowrap">{config.label}</span>
-                                                                        </div>
-                                                                        {isSelected && <FiCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0 ml-1.5" />}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
-                                        <div className="flex gap-0.5">
-                                            {[1, 2, 3, 4, 5].map((star) => (
-                                                <FiStar 
-                                                    key={star} 
-                                                    className={`w-3.5 h-3.5 ${star <= (data.rating || 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 dark:text-slate-700'}`} 
-                                                />
-                                            ))}
-                                        </div>
-                                        <span className="text-[11px] font-semibold text-slate-400">
-                                            {data.rating || 0} / 5
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Interactive Rating & Action Strip */}
-                                {isOwner && (
-                                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                                        <div className="flex items-center gap-0.5">
-                                            {[1, 2, 3, 4, 5].map((star) => (
-                                                <button 
-                                                    key={star} 
-                                                    type="button"
-                                                    onClick={() => handleRatingChange(docData.id, star)}
-                                                    className="focus:outline-none transition-transform hover:scale-125 active:scale-140 p-0.5"
-                                                    title={`Rate ${star} stars`}
-                                                >
-                                                    <FiStar 
-                                                        className={`w-3.5 h-3.5 ${star <= (data.rating || 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 dark:text-slate-700 hover:text-amber-300'}`} 
-                                                    />
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        <div className="flex items-center gap-1">
-                                            <button 
-                                                onClick={() => setTrackingSeries({ id: docData.id, ...data })}
-                                                className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
-                                                title="Episode List Tracker"
-                                            >
-                                                <FiList className="w-4 h-4" />
-                                            </button>
-
-                                            <button 
-                                                onClick={() => setEditingSeries({ id: docData.id, ...data })}
-                                                className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
-                                                title="Edit Series"
-                                            >
-                                                <FiEdit2 className="w-3.5 h-3.5" />
-                                            </button>
-
-                                            <button 
-                                                onClick={() => handleDelete(docData.id)}
-                                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                                                title="Delete Series"
-                                            >
-                                                <FiTrash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
+                {processedSeries.map((item) => (
+                    <SeriesCard
+                        key={item.id}
+                        series={item}
+                        cardLayout={cardLayout}
+                        isOwner={isOwner}
+                        isHighlighted={highlightedSeriesId === item.id}
+                        isOpenStatusMenu={openStatusMenuId === item.id}
+                        onToggleStatusMenu={(id) => setOpenStatusMenuId(id)}
+                        onStatusChange={handleStatusChange}
+                        onRatingChange={handleRatingChange}
+                        onWatchedEpisodesChange={handleWatchedEpisodesChange}
+                        onOpenTracker={(seriesData) => setTrackingSeries(seriesData)}
+                        onEdit={(seriesData) => setEditingSeries(seriesData)}
+                        onDelete={handleDelete}
+                    />
+                ))}
             </div>
 
             {/* Empty Search/Filter State */}
             {processedSeries.length === 0 && (
-                <div className="text-center py-16 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-1">No matches discovered</h3>
-                    <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">Try adjusting your active filters or search terms.</p>
+                <div className="text-center py-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3">
+                        <FiFilter className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">
+                        No series found matching your criteria
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 max-w-sm mx-auto">
+                        Try modifying your search keywords, clearing status filters, or resetting filter constraints.
+                    </p>
                     <button 
                         onClick={resetFilters} 
-                        className="text-xs font-bold uppercase tracking-wider px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-indigo-600 dark:text-indigo-400 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer"
                     >
-                        Clear All Filters
+                        Reset All Filters
                     </button>
                 </div>
             )}
 
+            {/* Modals */}
             {isOwner && (
-                <>
-                    <AddSeriesModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} userId={userId} />
-                    {editingSeries && <EditSeriesModal series={editingSeries} onClose={() => setEditingSeries(null)} />}
-                    {trackingSeries && (
-                        <EpisodesModal 
-                            series={trackingSeries} 
-                            onClose={() => setTrackingSeries(null)} 
-                            isOwner={isOwner} 
-                        />
-                    )}
-                </>
+                <AddSeriesModal 
+                    isOpen={isAddModalOpen} 
+                    onClose={() => setIsAddModalOpen(false)} 
+                    userId={userId} 
+                />
             )}
-        </>
-    );
-};
 
-export default SeriesList;
+            {isOwner && editingSeries && (
+                <EditSeriesModal 
+                    series={editingSeries} 
+                    isOpen={!!editingSeries} 
+                    onClose={() => setEditingSeries(null)} 
+                    userId={userId} 
+                />
+            )}
+
+            {trackingSeries && (
+                <EpisodesModal 
+                    series={trackingSeries} 
+                    isOpen={!!trackingSeries} 
+                    onClose={() => setTrackingSeries(null)} 
+                    userId={userId} 
+                    isOwner={isOwner} 
+                />
+            )}
+        </div>
+    );
+}

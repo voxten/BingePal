@@ -3,21 +3,42 @@
 import { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
+import { recordWatchedEpisode } from '../services/recentWatchedService';
 import { 
     FiLoader, 
     FiCheck, 
     FiX, 
     FiCheckCircle, 
-    FiSidebar 
+    FiSidebar,
+    FiTv,
+    FiClock
 } from 'react-icons/fi';
 
+const formatAirDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+        return dateStr;
+    } catch {
+        return dateStr;
+    }
+};
+
 const EpisodesModal = ({ series, onClose, isOwner }) => {
+    const { user } = useAuth();
     const [episodesBySeason, setEpisodesBySeason] = useState({});
     const [activeSeason, setActiveSeason] = useState('1');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [watchedList, setWatchedList] = useState(series.watchedEpisodesList || []);
+
+    const currentUserId = user?.uid || series.userId;
 
     useEffect(() => {
         const fetchEpisodes = async () => {
@@ -61,6 +82,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
     const handleToggleEpisode = async (episodeTrackerId) => {
         if (!isOwner) return;
 
+        const userSeriesId = series.userSeriesId || series.id;
         const isWatched = watchedList.includes(episodeTrackerId);
         const newList = isWatched 
             ? watchedList.filter(id => id !== episodeTrackerId) 
@@ -69,11 +91,33 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
         setWatchedList(newList);
 
         try {
-            await updateDoc(doc(db, 'series', series.id), { 
+            await updateDoc(doc(db, 'userSeries', userSeriesId), { 
                 watchedEpisodesList: newList,
                 watchedEpisodes: newList.length,
                 status: newList.length === series.totalEpisodes && series.totalEpisodes > 0 ? 'completed' : series.status
             });
+
+            // If we just marked this episode as watched, log to Recently Watched
+            if (!isWatched) {
+                const allEps = Object.values(episodesBySeason).flat();
+                const targetEp = allEps.find(ep => ep.trackerId === episodeTrackerId);
+                if (targetEp) {
+                    recordWatchedEpisode({
+                        userId: currentUserId,
+                        userSeriesId: userSeriesId,
+                        seriesId: series.seriesId || series.id,
+                        seriesTitle: series.title,
+                        imageUrl: targetEp.image?.medium || targetEp.image?.original || series.imageUrl,
+                        episodeNumber: episodeTrackerId,
+                        seasonNumber: targetEp.season,
+                        episodeInSeason: targetEp.number,
+                        episodeTitle: targetEp.name,
+                        tvmazeId: series.tvmazeId,
+                        totalEpisodes: series.totalEpisodes,
+                        watchedEpisodes: newList.length
+                    });
+                }
+            }
         } catch (err) {
             console.error("Error updating watched episodes: ", err);
         }
@@ -81,6 +125,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
 
     const handleToggleSeason = async (seasonNumber) => {
         if (!isOwner) return;
+        const userSeriesId = series.userSeriesId || series.id;
         const seasonEps = episodesBySeason[seasonNumber] || [];
         const seasonIds = seasonEps.map(ep => ep.trackerId);
         const allSeasonWatched = seasonIds.every(id => watchedList.includes(id));
@@ -94,11 +139,30 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
 
         setWatchedList(newList);
         try {
-            await updateDoc(doc(db, 'series', series.id), {
+            await updateDoc(doc(db, 'userSeries', userSeriesId), {
                 watchedEpisodesList: newList,
                 watchedEpisodes: newList.length,
                 status: newList.length === series.totalEpisodes && series.totalEpisodes > 0 ? 'completed' : series.status
             });
+
+            // If we marked whole season as watched, log the final episode of that season
+            if (!allSeasonWatched && seasonEps.length > 0) {
+                const lastEp = seasonEps[seasonEps.length - 1];
+                recordWatchedEpisode({
+                    userId: currentUserId,
+                    userSeriesId: userSeriesId,
+                    seriesId: series.seriesId || series.id,
+                    seriesTitle: series.title,
+                    imageUrl: lastEp.image?.medium || lastEp.image?.original || series.imageUrl,
+                    episodeNumber: lastEp.trackerId,
+                    seasonNumber: lastEp.season,
+                    episodeInSeason: lastEp.number,
+                    episodeTitle: lastEp.name,
+                    tvmazeId: series.tvmazeId,
+                    totalEpisodes: series.totalEpisodes,
+                    watchedEpisodes: newList.length
+                });
+            }
         } catch (err) {
             console.error("Error toggling entire season: ", err);
         }
@@ -281,54 +345,91 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
                                     )}
                                 </div>
 
-                                {/* Episodes Grid (Expands to 4 cols when sidebar is collapsed) */}
+                                {/* Episodes Grid */}
                                 <div className="flex-grow overflow-y-auto p-3 sm:p-5">
-                                    <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2.5 ${
-                                        isSidebarOpen ? 'lg:grid-cols-3' : 'lg:grid-cols-4'
-                                    }`}>
+                                    <div className={`grid grid-cols-1 sm:grid-cols-2 ${
+                                        isSidebarOpen ? 'xl:grid-cols-3' : 'lg:grid-cols-3 xl:grid-cols-4'
+                                    } gap-3`}>
                                         {currentSeasonEpisodes.map((ep) => {
                                             const isWatched = watchedList.includes(ep.trackerId);
+                                            const epImage = ep.image?.medium || ep.image?.original || series.imageUrl;
+                                            const airDateFormatted = formatAirDate(ep.airdate);
+
                                             return (
                                                 <button
                                                     key={ep.trackerId}
                                                     onClick={() => handleToggleEpisode(ep.trackerId)}
                                                     disabled={!isOwner}
-                                                    className={`group flex items-center justify-between p-3 rounded-xl border text-left transition-all duration-150 ${
+                                                    className={`group relative flex items-center p-2.5 sm:p-3 rounded-2xl border text-left transition-all duration-200 gap-3.5 ${
                                                         isWatched 
                                                             ? 'border-indigo-500/40 bg-indigo-50/70 dark:bg-indigo-950/30 dark:border-indigo-800/60 shadow-sm' 
-                                                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
+                                                            : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-300 dark:hover:border-indigo-800 hover:shadow-md'
                                                     }`}
                                                 >
-                                                    <div className="flex items-center gap-3 min-w-0 pr-2">
-                                                        <span className={`text-xs font-bold px-2 py-1 rounded-md shrink-0 ${
-                                                            isWatched 
-                                                                ? 'bg-indigo-600 text-white' 
-                                                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-slate-700'
-                                                        }`}>
+                                                    {/* 16:9 Episode Thumbnail with Badge & Checkmark Overlay */}
+                                                    <div className="relative w-24 sm:w-28 h-14 sm:h-16 rounded-xl overflow-hidden bg-slate-950 shrink-0 border border-slate-200/60 dark:border-slate-800/80 shadow-xs">
+                                                        {epImage ? (
+                                                            <img
+                                                                src={epImage}
+                                                                alt={ep.name || `Episode ${ep.number}`}
+                                                                className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+                                                                    isWatched ? 'opacity-70 contrast-105' : 'opacity-90 group-hover:opacity-100'
+                                                                }`}
+                                                                onError={(e) => {
+                                                                    e.target.style.display = 'none';
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-gradient-to-br from-indigo-900/40 to-slate-900 flex items-center justify-center text-slate-500">
+                                                                <FiTv className="w-5 h-5 opacity-40" />
+                                                            </div>
+                                                        )}
+
+                                                        {/* Episode number badge overlay on thumbnail */}
+                                                        <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-xs text-[10px] font-bold text-white font-mono leading-none border border-white/10 shadow-xs">
                                                             E{ep.number}
-                                                        </span>
-                                                        <div className="min-w-0">
-                                                            <p className={`text-xs sm:text-sm font-medium truncate ${
-                                                                isWatched 
-                                                                    ? 'text-slate-900 dark:text-slate-100 font-semibold' 
-                                                                    : 'text-slate-700 dark:text-slate-300'
-                                                            }`}>
-                                                                {ep.name || `Episode ${ep.number}`}
-                                                            </p>
-                                                            {ep.runtime && (
-                                                                <p className="text-[11px] text-slate-400">
-                                                                    {ep.runtime} min
-                                                                </p>
-                                                            )}
                                                         </div>
+
+                                                        {/* Single Unified Checkmark: Visible when watched, subtle hint on hover when not watched */}
+                                                        {isWatched ? (
+                                                            <div className="absolute inset-0 bg-indigo-950/50 backdrop-blur-[1px] flex items-center justify-center">
+                                                                <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/50 border border-white/20">
+                                                                    <FiCheck className="w-4 h-4 stroke-[3]" />
+                                                                </div>
+                                                            </div>
+                                                        ) : isOwner ? (
+                                                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                                <div className="w-7 h-7 rounded-full bg-black/60 backdrop-blur-xs text-white/90 flex items-center justify-center border border-white/20">
+                                                                    <FiCheck className="w-4 h-4 stroke-[2]" />
+                                                                </div>
+                                                            </div>
+                                                        ) : null}
                                                     </div>
 
-                                                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border transition-all ${
-                                                        isWatched 
-                                                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/30' 
-                                                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-transparent group-hover:border-slate-300 dark:group-hover:border-slate-600'
-                                                    }`}>
-                                                        <FiCheck className="w-3.5 h-3.5" />
+                                                    {/* Episode Text Meta */}
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className={`text-xs sm:text-sm font-bold truncate ${
+                                                            isWatched 
+                                                                ? 'text-indigo-950 dark:text-indigo-200' 
+                                                                : 'text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors'
+                                                        }`}>
+                                                            {ep.name || `Episode ${ep.number}`}
+                                                        </p>
+                                                        
+                                                        <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400 dark:text-slate-500 mt-1 font-medium">
+                                                            {ep.runtime && (
+                                                                <span className="inline-flex items-center gap-1">
+                                                                    <FiClock className="w-3 h-3 text-slate-400" />
+                                                                    {ep.runtime} min
+                                                                </span>
+                                                            )}
+                                                            {ep.runtime && airDateFormatted && (
+                                                                <span className="text-slate-300 dark:text-slate-700">•</span>
+                                                            )}
+                                                            {airDateFormatted && (
+                                                                <span>{airDateFormatted}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </button>
                                             );

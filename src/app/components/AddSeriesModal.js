@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { db } from '../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 import { FiDownload, FiLoader, FiAlertCircle } from 'react-icons/fi';
 
 const AddSeriesModal = ({ isOpen, onClose, userId }) => {
@@ -191,7 +191,45 @@ const AddSeriesModal = ({ isOpen, onClose, userId }) => {
                     <button
                         type="button"
                         onClick={async () => {
-                            await addDoc(collection(db, 'series'), { ...formData, userId });
+                            if (!formData.title.trim()) return;
+
+                            const tvmazeIdStr = formData.tvmazeId ? formData.tvmazeId.toString().trim() : '';
+                            const imdbIdStr = formData.imdbId ? formData.imdbId.toString().trim() : '';
+
+                            let canonicalSeriesId = '';
+                            if (tvmazeIdStr) {
+                                canonicalSeriesId = `tv_${tvmazeIdStr}`;
+                            } else if (imdbIdStr) {
+                                canonicalSeriesId = `imdb_${imdbIdStr}`;
+                            } else {
+                                canonicalSeriesId = doc(collection(db, 'series')).id;
+                            }
+
+                            // 1. Save / update global catalog in 'series'
+                            const catalogData = {
+                                title: formData.title.trim(),
+                                imageUrl: formData.imageUrl || '',
+                                imdbId: imdbIdStr || '',
+                                tvmazeId: tvmazeIdStr || '',
+                                totalEpisodes: parseInt(formData.totalEpisodes) || 0,
+                                seasons: parseInt(formData.seasons) || 1,
+                                updatedAt: Date.now()
+                            };
+                            await setDoc(doc(db, 'series', canonicalSeriesId), catalogData, { merge: true });
+
+                            // 2. Save user tracking record in 'userSeries'
+                            const userSeriesDocId = `${userId}_${canonicalSeriesId}`;
+                            const userSeriesData = {
+                                userId: userId,
+                                seriesId: canonicalSeriesId,
+                                status: formData.status || 'plan-to-watch',
+                                rating: parseInt(formData.rating) || 0,
+                                watchedEpisodes: parseInt(formData.watchedEpisodes) || 0,
+                                watchedEpisodesList: formData.watchedEpisodesList || [],
+                                updatedAt: Date.now()
+                            };
+                            await setDoc(doc(db, 'userSeries', userSeriesDocId), userSeriesData, { merge: true });
+
                             onClose();
                         }}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium"
