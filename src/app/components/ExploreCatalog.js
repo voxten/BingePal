@@ -6,9 +6,14 @@ import { collection, doc, setDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import AddSeriesModal from './AddSeriesModal';
-import { FiCompass } from 'react-icons/fi';
+import { FiCompass, FiPlus, FiAlertTriangle } from 'react-icons/fi';
 import LoadingSpinner from './LoadingSpinner';
 import Toast from './ui/Toast';
+import PageHeader from './ui/PageHeader';
+import SectionHeader from './ui/SectionHeader';
+import EmptyState from './ui/EmptyState';
+import AlertBanner from './ui/AlertBanner';
+import Button from './ui/Button';
 import DiscoverCard from './series/DiscoverCard';
 import ExploreToolbar from './explore/ExploreToolbar';
 import ExploreOnlineResults from './explore/ExploreOnlineResults';
@@ -232,7 +237,17 @@ export default function ExploreCatalog() {
     const isInitialLoading = catalogLoading || (user && userLoading);
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-200">
+        <div className="space-y-6">
+            <PageHeader
+                title="Explore"
+                description="Browse the shared catalog or search TVMaze for anything else."
+                actions={
+                    <Button variant="primary" icon={FiPlus} onClick={() => setIsAddModalOpen(true)}>
+                        Add custom
+                    </Button>
+                }
+            />
+
             {/* Reusable Toast Notification */}
             <Toast
                 message={toastState.message}
@@ -253,50 +268,53 @@ export default function ExploreCatalog() {
                 onSetCardLayout={setCardLayout}
                 sortBy={sortBy}
                 onSortChange={setSortBy}
-                onOpenAddModal={() => setIsAddModalOpen(true)}
             />
 
             {/* Results Count Header */}
-            <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 px-1">
+            <div className="flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                 <div>
-                    Discovering <span className="font-bold text-slate-800 dark:text-slate-200">{filteredCatalog.length + externalResults.length}</span> new series
+                    <span className="font-medium text-slate-900 dark:text-slate-100">{filteredCatalog.length + externalResults.length}</span> series to discover
                 </div>
                 {user && (
-                    <div className="text-[11px] text-slate-400">
-                        (Showing only series not in your collection)
+                    <div className="hidden sm:block">
+                        Series already in your collection are hidden
                     </div>
                 )}
             </div>
 
             {/* Main Content Area */}
             {isInitialLoading ? (
-                <div className="py-20">
-                    <LoadingSpinner />
-                </div>
+                <LoadingSpinner />
             ) : catalogError ? (
-                <div className="p-4 bg-rose-50 dark:bg-rose-950/30 text-rose-600 rounded-2xl text-sm font-medium">
-                    Error loading series catalog: {catalogError.message}
-                </div>
+                <AlertBanner
+                    tone="danger"
+                    icon={FiAlertTriangle}
+                    title="Couldn't load the catalog"
+                    description={catalogError.message}
+                />
             ) : (
-                <div className="space-y-8">
-                    
+                <div className="space-y-10">
+
                     {/* 1. Catalog Series Grid (Untracked shows in BingePal) */}
-                    <div>
+                    <div className="space-y-4">
                         {filteredCatalog.length === 0 && externalResults.length === 0 ? (
-                            <div className="text-center py-20 px-4 bg-white dark:bg-slate-900/60 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl space-y-3">
-                                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
-                                    <FiCompass className="w-6 h-6" />
-                                </div>
-                                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-                                    {searchQuery ? `No series found matching "${searchQuery}"` : "You've added all available catalog series!"}
-                                </h3>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                                    {searchQuery 
-                                        ? "Try a different search term or add a custom series manually." 
-                                        : "Search above to find any show online via TVMaze or click 'Add Custom' to add any new title."}
-                                </p>
-                            </div>
-                        ) : (
+                            <EmptyState
+                                icon={FiCompass}
+                                title={searchQuery ? `No results for “${searchQuery}”` : "You've added everything in the catalog"}
+                                description={searchQuery
+                                    ? 'Try another title, or add the series manually.'
+                                    : 'Search above to find any show on TVMaze, or add one manually.'}
+                                action={
+                                    <Button icon={FiPlus} onClick={() => setIsAddModalOpen(true)}>
+                                        Add custom series
+                                    </Button>
+                                }
+                            />
+                        ) : filteredCatalog.length > 0 && (
+                            <>
+                            {externalResults.length > 0 && (
+                                <SectionHeader title="In the catalog" count={filteredCatalog.length} />
+                            )}
                             <div className={
                                 cardLayout === 'vertical'
                                     ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5"
@@ -321,6 +339,7 @@ export default function ExploreCatalog() {
                                     />
                                 ))}
                             </div>
+                            </>
                         )}
                     </div>
 

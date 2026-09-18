@@ -9,7 +9,7 @@ export default function MigrationBanner({
 }) {
     return (
         <AlertBanner
-            variant="gradient"
+            tone="accent"
             icon={FiDatabase}
             title="Database Architecture Upgrade Ready"
             description={

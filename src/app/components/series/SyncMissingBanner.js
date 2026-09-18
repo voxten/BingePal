@@ -13,7 +13,7 @@ export default function SyncMissingBanner({
 
     return (
         <AlertBanner
-            variant="indigo"
+            tone="accent"
             icon={FiAlertCircle}
             title="Action Required: Missing IDs"
             description={

@@ -10,24 +10,28 @@ import EpisodesModal from './EpisodesModal';
 import RecentlyWatched from './RecentlyWatched';
 import { recordWatchedEpisode } from '../services/recentWatchedService';
 import { migrateUserSeries } from '../services/seriesMigrationService';
-import Link from 'next/link';
-import { 
-    FiFilter, 
-    FiShare2, 
-    FiCheck, 
-    FiSliders, 
-    FiCompass 
+import {
+    FiFilter,
+    FiShare2,
+    FiCheck,
+    FiSliders,
+    FiCompass,
+    FiShuffle,
+    FiLayers,
+    FiAlertTriangle
 } from 'react-icons/fi';
 import LoadingSpinner from './LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
 import SearchInput from './ui/SearchInput';
 import LayoutSwitcher from './ui/LayoutSwitcher';
-import Toast from './ui/Toast';
 import SeriesCard from './series/SeriesCard';
 import SeriesFilterDrawer from './series/SeriesFilterDrawer';
 import SyncMissingBanner from './series/SyncMissingBanner';
 import MigrationBanner from './series/MigrationBanner';
-import { STATUS_CONFIG } from './ui/StatusBadge';
+import Button from './ui/Button';
+import Badge from './ui/Badge';
+import EmptyState from './ui/EmptyState';
+import AlertBanner from './ui/AlertBanner';
 
 const SORT_OPTIONS = [
     { label: 'Title (A-Z)', value: 'title' },
@@ -144,6 +148,9 @@ export default function SeriesList({ userId }) {
                     rating: Number(uData.rating) || 0,
                     watchedEpisodes: Number(uData.watchedEpisodes) || 0,
                     watchedEpisodesList: Array.isArray(uData.watchedEpisodesList) ? uData.watchedEpisodesList : [],
+                    network: cData.network || uData.network || '',
+                    webChannel: cData.webChannel || uData.webChannel || '',
+                    streamingService: cData.streamingService || uData.streamingService || '',
                     userId: uData.userId,
                     data: function() { return this; }
                 };
@@ -483,42 +490,37 @@ export default function SeriesList({ userId }) {
 
     if (error) {
         return (
-            <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 mb-6 rounded-r-xl shadow-sm dark:bg-rose-950/30 dark:text-rose-400">
-                <p className="font-medium">Error loading series: {error.message}</p>
-            </div>
+            <AlertBanner
+                tone="danger"
+                icon={FiAlertTriangle}
+                title="Couldn't load your collection"
+                description={error.message}
+            />
         );
     }
 
     if (isEmptyCollection) {
         return (
-            <div className="text-center py-20 bg-slate-50 dark:bg-slate-900/50 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl max-w-4xl mx-auto px-4">
-                <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    {isOwner ? "Welcome to your tracking space" : "No tracking activity discovered"}
-                </h3>
-                <p className="text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto text-sm">
-                    {isOwner
-                        ? "Get started by building your ultimate series collection tracker."
-                        : "This collection doesn't contain any tracked media files yet."}
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-                    {isOwner && (
-                        <>
-                            <Link 
-                                href="/explore" 
-                                className="bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-medium px-6 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20 text-sm w-full sm:w-auto flex items-center justify-center gap-2"
-                            >
-                                <FiCompass className="w-4 h-4" />
-                                <span>Explore & Add First Series</span>
-                            </Link>
-                            <AddSeriesModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} userId={userId} />
-                        </>
-                    )}
-                    <button onClick={handleCopyLink} className={`flex items-center justify-center gap-2 font-medium px-6 py-2.5 rounded-xl transition-all border text-sm w-full sm:w-auto cursor-pointer ${copied ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
-                        {copied ? <FiCheck className="w-4 h-4" /> : <FiShare2 className="w-4 h-4" />}
-                        <span>{copied ? 'Link Copied!' : 'Copy Collection Link'}</span>
-                    </button>
-                </div>
-            </div>
+            <EmptyState
+                icon={FiLayers}
+                title={isOwner ? 'Your collection is empty' : 'Nothing tracked yet'}
+                description={isOwner
+                    ? 'Find a series in the catalog and add it to start tracking episodes.'
+                    : "This collection doesn't have any series yet."}
+                className="max-w-3xl mx-auto"
+                action={
+                    <>
+                        {isOwner && (
+                            <Button variant="primary" href="/explore" icon={FiCompass}>
+                                Explore series
+                            </Button>
+                        )}
+                        <Button icon={copied ? FiCheck : FiShare2} onClick={handleCopyLink}>
+                            {copied ? 'Link copied' : 'Copy collection link'}
+                        </Button>
+                    </>
+                }
+            />
         );
     }
 
@@ -543,9 +545,11 @@ export default function SeriesList({ userId }) {
             )}
 
             {migrationMessage && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-semibold">
-                    {migrationMessage}
-                </div>
+                <AlertBanner
+                    tone={migrationMessage.startsWith('Migration failed') ? 'danger' : 'success'}
+                    icon={migrationMessage.startsWith('Migration failed') ? FiAlertTriangle : FiCheck}
+                    title={migrationMessage}
+                />
             )}
 
             {/* Recently Watched Shelf */}
@@ -555,6 +559,7 @@ export default function SeriesList({ userId }) {
                 allSeries={allSeries} 
                 onOpenTracker={(seriesData) => setTrackingSeries(seriesData)} 
                 onJumpToSeries={handleJumpToSeries} 
+                onWatchedEpisodesChange={handleWatchedEpisodesChange}
             />
 
             {/* Top Control Bar */}
@@ -578,36 +583,28 @@ export default function SeriesList({ userId }) {
                         setCardLayout={setCardLayout}
                     />
 
-                    {/* Share Button */}
-                    <button 
-                        onClick={handleCopyLink} 
-                        className={`flex items-center justify-center gap-2 font-medium px-4 h-[42px] rounded-xl transition-all border text-sm w-full sm:w-auto cursor-pointer ${
-                            copied 
-                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm' 
-                                : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm'
-                        }`}
-                    >
-                        {copied ? <FiCheck className="w-4 h-4 text-emerald-500" /> : <FiShare2 className="w-4 h-4" />}
-                        <span>{copied ? 'Copied!' : 'Share'}</span>
-                    </button>
+                    <Button icon={copied ? FiCheck : FiShare2} onClick={handleCopyLink}>
+                        {copied ? 'Copied' : 'Share'}
+                    </Button>
 
-                    {/* Filters & Sort Toggle Button */}
-                    <button 
-                        onClick={() => setShowFilters(!showFilters)} 
-                        className={`relative flex items-center justify-center gap-2 font-medium px-4 h-[42px] rounded-xl transition-all w-full sm:w-auto border text-sm shadow-sm cursor-pointer ${
-                            showFilters || activeFiltersCount > 0
-                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300' 
-                                : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                        }`}
+                    <Button
+                        icon={FiShuffle}
+                        href="/roulette"
+                        title="Pick something to watch at random"
                     >
-                        <FiSliders className="w-4 h-4" />
-                        <span>Filters & Sort</span>
+                        <span className="hidden sm:inline">Roulette</span>
+                    </Button>
+
+                    <Button
+                        icon={FiSliders}
+                        pressed={showFilters || activeFiltersCount > 0}
+                        onClick={() => setShowFilters(!showFilters)}
+                    >
+                        <span>Filters</span>
                         {activeFiltersCount > 0 && (
-                            <span className="ml-1 px-1.5 py-0.2 text-[11px] font-bold rounded-full bg-indigo-600 text-white">
-                                {activeFiltersCount}
-                            </span>
+                            <Badge tone="accent">{activeFiltersCount}</Badge>
                         )}
-                    </button>
+                    </Button>
                 </div>
             </div>
 
@@ -627,12 +624,12 @@ export default function SeriesList({ userId }) {
             />
 
             {/* Results Count Info */}
-            <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                 <div>
-                    Showing <span className="font-bold text-slate-800 dark:text-slate-200">{processedSeries.length}</span> of {allSeries.length} series
+                    Showing <span className="font-medium text-slate-900 dark:text-slate-100">{processedSeries.length}</span> of {allSeries.length} series
                 </div>
-                <div className="text-[11px] text-slate-400">
-                    Sorted by: <span className="font-semibold text-slate-600 dark:text-slate-300">{SORT_OPTIONS.find(o => o.value === sortConfig.key)?.label}</span> ({sortConfig.direction.toUpperCase()})
+                <div>
+                    Sorted by <span className="font-medium text-slate-700 dark:text-slate-300">{SORT_OPTIONS.find(o => o.value === sortConfig.key)?.label}</span>, {sortConfig.direction === 'asc' ? 'ascending' : 'descending'}
                 </div>
             </div>
 
@@ -663,23 +660,12 @@ export default function SeriesList({ userId }) {
 
             {/* Empty Search/Filter State */}
             {processedSeries.length === 0 && (
-                <div className="text-center py-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3">
-                        <FiFilter className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">
-                        No series found matching your criteria
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 max-w-sm mx-auto">
-                        Try modifying your search keywords, clearing status filters, or resetting filter constraints.
-                    </p>
-                    <button 
-                        onClick={resetFilters} 
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer"
-                    >
-                        Reset All Filters
-                    </button>
-                </div>
+                <EmptyState
+                    icon={FiFilter}
+                    title="No series match these filters"
+                    description="Try a different search term or clear some filters."
+                    action={<Button onClick={resetFilters}>Reset filters</Button>}
+                />
             )}
 
             {/* Modals */}

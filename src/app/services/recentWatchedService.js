@@ -45,7 +45,10 @@ export async function recordWatchedEpisode({
     imageUrl,
     tvmazeId,
     totalEpisodes,
-    watchedEpisodes
+    watchedEpisodes,
+    runtime,
+    airdate,
+    seasonEpisodesCount
 }) {
     if (!userId) return;
 
@@ -54,9 +57,12 @@ export async function recordWatchedEpisode({
         let finalEpisodeInSeason = episodeInSeason;
         let finalEpisodeTitle = episodeTitle;
         let finalImage = imageUrl;
+        let finalRuntime = runtime || null;
+        let finalAirdate = airdate || null;
+        let finalSeasonEpisodesCount = seasonEpisodesCount || null;
 
-        // If episode name/season is missing, look up from TVMaze cache or API
-        if ((!finalEpisodeTitle || !finalSeason) && tvmazeId) {
+        // If episode details are incomplete, look up from TVMaze cache or API
+        if (tvmazeId) {
             const episodes = await getTVMazeEpisodes(tvmazeId);
             if (episodes && episodes.length > 0) {
                 const matchedEp = episodes.find(e => e.trackerId === episodeNumber) || episodes[episodeNumber - 1];
@@ -64,8 +70,19 @@ export async function recordWatchedEpisode({
                     finalSeason = matchedEp.season || finalSeason || 1;
                     finalEpisodeInSeason = matchedEp.number || finalEpisodeInSeason || episodeNumber;
                     finalEpisodeTitle = matchedEp.name || `Episode ${episodeNumber}`;
-                    if (matchedEp.image?.medium || matchedEp.image?.original) {
-                        finalImage = matchedEp.image.medium || matchedEp.image.original;
+                    if (matchedEp.image?.original || matchedEp.image?.medium) {
+                        finalImage = matchedEp.image.original || matchedEp.image.medium;
+                    }
+                    if (matchedEp.runtime) {
+                        finalRuntime = matchedEp.runtime;
+                    }
+                    if (matchedEp.airdate) {
+                        finalAirdate = matchedEp.airdate;
+                    }
+
+                    const seasonEpisodes = episodes.filter(e => e.season === finalSeason);
+                    if (seasonEpisodes.length > 0) {
+                        finalSeasonEpisodesCount = seasonEpisodes.length;
                     }
                 }
             }
@@ -90,13 +107,16 @@ export async function recordWatchedEpisode({
             episodeInSeason: finalEpisodeInSeason ? Number(finalEpisodeInSeason) : null,
             episodeTitle: finalEpisodeTitle || `Episode ${episodeNumber}`,
             imageUrl: finalImage || '',
+            runtime: finalRuntime,
+            airdate: finalAirdate,
+            seasonEpisodesCount: finalSeasonEpisodesCount,
             tvmazeId: tvmazeId || '',
             totalEpisodes: totalEpisodes || 0,
             watchedEpisodes: watchedEpisodes || episodeNumber || 0,
             watchedAt: Date.now()
         };
 
-        // Filter out prior entry for the exact same episode or series to keep history fresh and non-repetitive
+        // Filter out prior entry for the exact same episode to keep history fresh and non-repetitive
         const filtered = currentItems.filter(item => !(
             item.seriesId === newItem.seriesId && item.episodeNumber === newItem.episodeNumber
         ));

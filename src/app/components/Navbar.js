@@ -4,16 +4,31 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuth } from '../context/AuthContext';
-import { 
-    FiSun, 
-    FiMoon, 
-    FiLogIn, 
-    FiLogOut, 
-    FiMenu, 
+import {
+    FiSun,
+    FiMoon,
+    FiLogIn,
+    FiLogOut,
+    FiMenu,
     FiX,
-    FiLayers, 
-    FiCompass 
+    FiLayers,
+    FiCompass,
+    FiCalendar,
+    FiShuffle,
+    FiUser
 } from 'react-icons/fi';
+import Button, { IconButton } from './ui/Button';
+import TierAvatar from './profile/TierAvatar';
+import { readViewerLevel, VIEWER_LEVEL_EVENT } from '../services/viewerLevelService';
+
+const NAV_ITEMS = [
+    { key: 'collection', href: '/', label: 'My Collection', icon: FiLayers },
+    { key: 'explore', href: '/explore', label: 'Explore', icon: FiCompass },
+    { key: 'schedule', href: '/schedule', label: 'Schedule', icon: FiCalendar },
+    { key: 'roulette', href: '/roulette', label: 'Roulette', icon: FiShuffle },
+];
+
+const MENU_ITEM = 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer';
 
 export default function Navbar({ activeTab = 'collection' }) {
     const { login, logout, user } = useAuth();
@@ -45,194 +60,209 @@ export default function Navbar({ activeTab = 'collection' }) {
         }
     }, [darkMode, isInitialized]);
 
-    return (
-        <header className="sticky top-0 z-40 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60 transition-colors">
-            <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+    // Tier ring for the avatar, cached by the profile page
+    const [viewerLevel, setViewerLevel] = useState(null);
+    useEffect(() => {
+        if (!user?.uid) {
+            setViewerLevel(null);
+            return;
+        }
+        const refresh = () => setViewerLevel(readViewerLevel(user.uid));
+        refresh();
+        window.addEventListener(VIEWER_LEVEL_EVENT, refresh);
+        window.addEventListener('storage', refresh);
+        return () => {
+            window.removeEventListener(VIEWER_LEVEL_EVENT, refresh);
+            window.removeEventListener('storage', refresh);
+        };
+    }, [user?.uid]);
 
-                {/* Left Side: Brand Logo & Minimalist Text Navigation */}
-                <div className="flex items-center gap-8">
-                    {/* Brand */}
-                    <Link href="/" className="flex items-center gap-3 group">
-                        <div className="w-9 h-9 relative rounded-xl overflow-hidden shadow-md shadow-indigo-500/15 bg-gradient-to-tr from-indigo-600 to-violet-600 p-0.5 group-hover:scale-105 transition-transform">
-                            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center p-1">
-                                <Image
-                                    src="https://cms8ydvfu8qmbdmt.public.blob.vercel-storage.com/logo.webp"
-                                    alt="BingePal Logo"
-                                    width={24}
-                                    height={24}
-                                    className="object-contain"
-                                    loader={({ src }) => src}
-                                    priority
-                                />
-                            </div>
+    const displayName = user ? (user.displayName || user.email?.split('@')[0]) : '';
+    const closeMenu = () => setIsMobileMenuOpen(false);
+
+    return (
+        <header className="sticky top-0 z-40 w-full bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+            <div className="container mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+
+                {/* Brand & primary navigation */}
+                <div className="flex items-center gap-8 h-full">
+                    <Link href="/" className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-slate-800 flex items-center justify-center p-1.5">
+                            <Image
+                                src="https://cms8ydvfu8qmbdmt.public.blob.vercel-storage.com/logo.webp"
+                                alt="BingePal Logo"
+                                width={20}
+                                height={20}
+                                className="object-contain"
+                                loader={({ src }) => src}
+                                priority
+                            />
                         </div>
-                        <span className="text-lg font-black tracking-tight bg-gradient-to-r from-indigo-600 to-violet-500 dark:from-indigo-400 dark:to-violet-400 bg-clip-text text-transparent">
+                        <span className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
                             BingePal
                         </span>
                     </Link>
 
-                    {/* Desktop Minimalist Links (Classic Tab Underline Style) */}
-                    <nav className="hidden md:flex items-center gap-6">
-                        <Link
-                            href="/"
-                            className={`relative py-1.5 flex items-center gap-2 text-sm font-semibold transition-colors ${
-                                activeTab === 'collection'
-                                    ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                            }`}
-                        >
-                            <FiLayers className="w-4 h-4" />
-                            <span>My Collection</span>
-                            {activeTab === 'collection' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-full" />
-                            )}
-                        </Link>
-
-                        <Link
-                            href="/explore"
-                            className={`relative py-1.5 flex items-center gap-2 text-sm font-semibold transition-colors ${
-                                activeTab === 'explore'
-                                    ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                            }`}
-                        >
-                            <FiCompass className="w-4 h-4" />
-                            <span>Explore Catalog</span>
-                            {activeTab === 'explore' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-full" />
-                            )}
-                        </Link>
+                    <nav className="hidden md:flex items-center gap-5 lg:gap-6 h-full">
+                        {NAV_ITEMS.map(({ key, href, label, icon: Icon }) => {
+                            const isActive = activeTab === key;
+                            return (
+                                <Link
+                                    key={key}
+                                    href={href}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    className={`relative h-full flex items-center gap-2 text-sm font-medium transition-colors ${
+                                        isActive
+                                            ? 'text-slate-900 dark:text-white'
+                                            : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                                    }`}
+                                >
+                                    <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : ''}`} />
+                                    <span>{label}</span>
+                                    {isActive && (
+                                        <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-full" />
+                                    )}
+                                </Link>
+                            );
+                        })}
                     </nav>
                 </div>
 
-                {/* Right Side: Theme Switcher & Auth Controls */}
-                <div className="hidden md:flex items-center gap-3">
-                    {/* Theme Toggle Button */}
-                    <button
+                {/* Theme & account controls */}
+                <div className="hidden md:flex items-center gap-2">
+                    <IconButton
+                        icon={darkMode ? FiSun : FiMoon}
+                        label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
                         onClick={() => setDarkMode(!darkMode)}
-                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95 shadow-sm cursor-pointer"
-                        aria-label="Toggle dark/light mode"
-                        title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                    >
-                        {darkMode ? <FiSun size={18} className="text-amber-400" /> : <FiMoon size={18} className="text-indigo-600" />}
-                    </button>
+                    />
 
-                    <div className="h-5 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1" />
+                    <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
 
-                    {/* Auth Status & Button */}
                     {user ? (
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={logout}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-700 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition-all active:scale-98 cursor-pointer"
+                        <>
+                            <Link
+                                href="/profile"
+                                className={`flex items-center gap-2 h-10 pl-1.5 pr-3 rounded-xl text-sm font-medium transition-colors ${
+                                    activeTab === 'profile'
+                                        ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white'
+                                        : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                                }`}
+                                title={viewerLevel
+                                    ? `Level ${viewerLevel.level} · ${viewerLevel.tier.name}`
+                                    : 'Profile & stats'}
                             >
-                                <FiLogOut size={16} />
-                                <span>Sign Out</span>
-                            </button>
-                        </div>
+                                <TierAvatar
+                                    size="sm"
+                                    photoURL={user.photoURL}
+                                    name={displayName}
+                                    tier={viewerLevel?.tier}
+                                />
+                                <span className="max-w-[120px] truncate hidden lg:inline">
+                                    {displayName}
+                                </span>
+                                {viewerLevel && (
+                                    <span className="hidden lg:inline text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
+                                        Lv {viewerLevel.level}
+                                    </span>
+                                )}
+                            </Link>
+
+                            <IconButton icon={FiLogOut} label="Sign out" onClick={logout} />
+                        </>
                     ) : (
-                        <button
-                            onClick={login}
-                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all active:scale-98 shadow-md shadow-indigo-500/10 cursor-pointer"
-                        >
-                            <FiLogIn size={16} />
-                            <span>Sign In</span>
-                        </button>
+                        <Button variant="primary" icon={FiLogIn} onClick={login}>
+                            Sign in
+                        </Button>
                     )}
                 </div>
 
-                {/* Mobile Hamburger Button */}
+                {/* Mobile menu */}
                 <div className="md:hidden relative">
-                    <button
+                    <IconButton
+                        icon={isMobileMenuOpen ? FiX : FiMenu}
+                        label="Toggle menu"
+                        variant="secondary"
                         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
-                        aria-label="Toggle mobile menu"
-                    >
-                        {isMobileMenuOpen ? <FiX size={20} /> : <FiMenu size={20} />}
-                    </button>
+                    />
 
-                    {/* Mobile Dropdown Panel */}
                     {isMobileMenuOpen && (
                         <>
-                            {/* Backdrop overlay */}
-                            <div 
-                                className="fixed inset-0 z-40 bg-black/20 dark:bg-black/40 backdrop-blur-xs"
-                                onClick={() => setIsMobileMenuOpen(false)}
+                            <div
+                                className="fixed inset-0 z-40 bg-slate-950/20 dark:bg-slate-950/50 animate-fade-in"
+                                onClick={closeMenu}
                             />
 
-                            {/* Dropdown Menu */}
-                            <div className="absolute right-0 mt-2.5 w-56 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl py-2 z-50 border border-slate-200/80 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
-                                <Link
-                                    href="/"
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                    className={`flex items-center px-4 py-2.5 text-sm font-semibold w-full transition-colors ${
-                                        activeTab === 'collection'
-                                            ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/40 font-bold'
-                                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                                    }`}
-                                >
-                                    <FiLayers className="mr-3 text-indigo-500" size={16} />
-                                    <span>My Collection</span>
-                                </Link>
+                            <div className="absolute right-0 mt-2 w-60 z-50 p-1.5 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 animate-pop-in origin-top-right">
+                                {NAV_ITEMS.map(({ key, href, label, icon: Icon }) => {
+                                    const isActive = activeTab === key;
+                                    return (
+                                        <Link
+                                            key={key}
+                                            href={href}
+                                            onClick={closeMenu}
+                                            className={`${MENU_ITEM} ${
+                                                isActive
+                                                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                                                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <Icon className="w-4 h-4" />
+                                            <span>{label}</span>
+                                        </Link>
+                                    );
+                                })}
 
-                                <Link
-                                    href="/explore"
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                    className={`flex items-center px-4 py-2.5 text-sm font-semibold w-full transition-colors ${
-                                        activeTab === 'explore'
-                                            ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/40 font-bold'
-                                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                                    }`}
-                                >
-                                    <FiCompass className="mr-3 text-indigo-500" size={16} />
-                                    <span>Explore Catalog</span>
-                                </Link>
-
-                                <div className="h-[1px] bg-slate-100 dark:bg-slate-800 my-1.5 mx-3" />
+                                <div className="h-px bg-slate-200 dark:bg-slate-800 my-1.5" />
 
                                 <button
                                     onClick={() => {
                                         setDarkMode(!darkMode);
-                                        setIsMobileMenuOpen(false);
+                                        closeMenu();
                                     }}
-                                    className="flex items-center px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 w-full text-left transition-colors cursor-pointer"
+                                    className={`${MENU_ITEM} text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800`}
                                 >
-                                    {darkMode ? (
-                                        <>
-                                            <FiSun className="mr-3 text-amber-400" size={16} />
-                                            <span>Light Theme</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <FiMoon className="mr-3 text-indigo-500" size={16} />
-                                            <span>Dark Theme</span>
-                                        </>
-                                    )}
+                                    {darkMode ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
+                                    <span>{darkMode ? 'Light theme' : 'Dark theme'}</span>
                                 </button>
 
-                                <div className="h-[1px] bg-slate-100 dark:bg-slate-800 my-1.5 mx-3" />
+                                <div className="h-px bg-slate-200 dark:bg-slate-800 my-1.5" />
 
                                 {user ? (
-                                    <button
-                                        onClick={() => {
-                                            logout();
-                                            setIsMobileMenuOpen(false);
-                                        }}
-                                        className="flex items-center px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 w-full text-left transition-colors cursor-pointer"
-                                    >
-                                        <FiLogOut className="mr-3" size={16} />
-                                        <span>Sign Out</span>
-                                    </button>
+                                    <>
+                                        <Link
+                                            href="/profile"
+                                            onClick={closeMenu}
+                                            className={`${MENU_ITEM} ${
+                                                activeTab === 'profile'
+                                                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                                                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <FiUser className="w-4 h-4" />
+                                            <span className="truncate">Profile</span>
+                                        </Link>
+
+                                        <button
+                                            onClick={() => {
+                                                logout();
+                                                closeMenu();
+                                            }}
+                                            className={`${MENU_ITEM} text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10`}
+                                        >
+                                            <FiLogOut className="w-4 h-4" />
+                                            <span>Sign out</span>
+                                        </button>
+                                    </>
                                 ) : (
                                     <button
                                         onClick={() => {
                                             login();
-                                            setIsMobileMenuOpen(false);
+                                            closeMenu();
                                         }}
-                                        className="flex items-center px-4 py-2.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 w-full text-left transition-colors cursor-pointer"
+                                        className={`${MENU_ITEM} text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-500/10`}
                                     >
-                                        <FiLogIn className="mr-3" size={16} />
-                                        <span>Sign In</span>
+                                        <FiLogIn className="w-4 h-4" />
+                                        <span>Sign in</span>
                                     </button>
                                 )}
                             </div>
