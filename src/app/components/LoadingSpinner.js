@@ -1,8 +1,8 @@
-export default function LoadingSpinner() {
+export default function LoadingSpinner({ label = 'Loading…', className = '' }) {
     return (
-        <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-            <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+        <div className={`min-h-[50vh] flex flex-col items-center justify-center gap-3 ${className}`}>
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600 dark:border-slate-800 dark:border-t-indigo-400" />
+            <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
         </div>
     );
 }

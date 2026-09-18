@@ -1,7 +1,7 @@
 "use client";
 
-import { FiGlobe } from 'react-icons/fi';
 import DiscoverCard from '../series/DiscoverCard';
+import SectionHeader from '../ui/SectionHeader';
 
 export default function ExploreOnlineResults({
     results = [],
@@ -17,22 +17,12 @@ export default function ExploreOnlineResults({
     if (!results || results.length === 0) return null;
 
     return (
-        <div className="pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-violet-100 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 flex items-center justify-center">
-                        <FiGlobe className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                        <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">
-                            Online TV Database Results ({results.length})
-                        </h2>
-                        <p className="text-[11px] text-slate-400">
-                            Available online to import & track in 1-click
-                        </p>
-                    </div>
-                </div>
-            </div>
+        <div className="space-y-4">
+            <SectionHeader
+                title="From TVMaze"
+                count={results.length}
+                description="Not in the catalog yet. Importing adds them for everyone."
+            />
 
             <div className={
                 cardLayout === 'vertical'

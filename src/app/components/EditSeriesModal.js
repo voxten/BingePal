@@ -3,11 +3,18 @@
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FiX, FiDownload, FiLoader, FiAlertCircle, FiStar } from 'react-icons/fi';
+import { FiDownload, FiAlertCircle } from 'react-icons/fi';
+import Modal from './ui/Modal';
+import Button from './ui/Button';
+import Poster from './ui/Poster';
+import RatingStars from './ui/RatingStars';
+import { STATUS_OPTIONS } from './ui/StatusBadge';
+import { Field, Input, Select } from './ui/Field';
 
 const EditSeriesModal = ({ series, onClose }) => {
     const [imdbInput, setImdbInput] = useState('');
     const [isFetching, setIsFetching] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [fetchError, setFetchError] = useState('');
 
     const [formData, setFormData] = useState({
@@ -104,6 +111,7 @@ const EditSeriesModal = ({ series, onClose }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsSaving(true);
         try {
             const seriesDocId = series.seriesId || series.id;
             const userSeriesDocId = series.userSeriesId || series.id;
@@ -136,6 +144,8 @@ const EditSeriesModal = ({ series, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error updating document: ', error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -152,174 +162,104 @@ const EditSeriesModal = ({ series, onClose }) => {
     if (!series) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
-                
-                {/* Header */}
-                <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900">
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Edit Series</h2>
-                    <button onClick={onClose} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                        <FiX className="w-5 h-5" />
-                    </button>
-                </div>
+        <Modal
+            onClose={onClose}
+            title="Edit series"
+            description={series.title}
+            footer={
+                <>
+                    <Button onClick={onClose}>Cancel</Button>
+                    <Button variant="primary" type="submit" form="edit-form" loading={isSaving}>
+                        Save changes
+                    </Button>
+                </>
+            }
+        >
+            <div className="space-y-6">
+                <Field
+                    label="Refresh from IMDb"
+                    hint="Updates the poster, title and episode counts. Your progress and rating stay the same."
+                    error={fetchError && (
+                        <span className="inline-flex items-center gap-1.5">
+                            <FiAlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            {fetchError}
+                        </span>
+                    )}
+                >
+                    <div className="flex gap-2">
+                        <Input
+                            type="text"
+                            placeholder="IMDb link or ID (e.g. tt0903747)"
+                            value={imdbInput}
+                            onChange={(e) => setImdbInput(e.target.value)}
+                            disabled={isFetching}
+                        />
+                        <Button
+                            icon={FiDownload}
+                            onClick={handleFetchImdbData}
+                            loading={isFetching}
+                            disabled={!imdbInput}
+                        >
+                            Fetch
+                        </Button>
+                    </div>
+                </Field>
 
-                <div className="p-5 overflow-y-auto space-y-5 flex-grow">
-                    
-                    {/* IMDb Sync Section */}
-                    <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-2">
-                            Update Metadata via IMDb
-                        </label>
-                        <p className="text-xs text-indigo-500/80 dark:text-indigo-300/70 mb-3">
-                            Fetch will update poster, title, and episode counts. Your progress and rating will be kept safe.
-                        </p>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                placeholder="IMDb Link or ID (e.g. tt0903747)"
-                                value={imdbInput}
-                                onChange={(e) => setImdbInput(e.target.value)}
-                                disabled={isFetching}
-                                className="flex-grow px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl transition-all focus:outline-none focus:border-indigo-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100"
-                            />
-                            <button
-                                type="button"
-                                onClick={handleFetchImdbData}
-                                disabled={isFetching || !imdbInput}
-                                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-medium text-xs px-4 py-2 rounded-xl transition-all shadow-sm active:scale-98"
-                            >
-                                {isFetching ? <FiLoader className="w-3.5 h-3.5 animate-spin" /> : <FiDownload className="w-3.5 h-3.5" />}
-                                <span>{isFetching ? 'Fetching...' : 'Fetch'}</span>
-                            </button>
+                <div className="h-px bg-slate-200 dark:bg-slate-800" />
+
+                <form id="edit-form" onSubmit={handleSubmit} className="space-y-4">
+                    <Field label="Title">
+                        <Input type="text" name="title" value={formData.title} onChange={handleChange} required />
+                    </Field>
+
+                    <Field label="Poster image URL">
+                        <div className="flex gap-3 items-center">
+                            {formData.imageUrl && (
+                                <Poster src={formData.imageUrl} alt="Poster preview" className="w-10 h-[60px] rounded-md shrink-0" />
+                            )}
+                            <Input type="url" name="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="https://…" />
                         </div>
-                        {fetchError && (
-                            <div className="mt-2 flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 font-medium">
-                                <FiAlertCircle className="w-3.5 h-3.5 shrink-0" />
-                                <span>{fetchError}</span>
-                            </div>
-                        )}
+                    </Field>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Field label="Seasons">
+                            <Input type="number" name="seasons" value={formData.seasons} onChange={handleChange} min="1" />
+                        </Field>
+                        <Field label="Total episodes">
+                            <Input type="number" name="totalEpisodes" value={formData.totalEpisodes} onChange={handleChange} min="1" />
+                        </Field>
                     </div>
 
-                    <hr className="border-slate-100 dark:border-slate-800" />
-
-                    <form id="edit-form" onSubmit={handleSubmit} className="space-y-4">
-                        <div>
-                            <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Series Title</label>
-                            <input
-                                type="text"
-                                name="title"
-                                value={formData.title}
+                    <div className="grid grid-cols-2 gap-4">
+                        <Field label="Watched episodes">
+                            <Input
+                                type="number"
+                                name="watchedEpisodes"
+                                value={formData.watchedEpisodes}
                                 onChange={handleChange}
-                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white text-sm focus:outline-none focus:border-indigo-500"
-                                required
+                                min="0"
+                                max={formData.totalEpisodes}
                             />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Poster Image URL</label>
-                            <div className="flex gap-3 items-center">
-                                {formData.imageUrl && (
-                                    <img src={formData.imageUrl} alt="Preview" className="w-12 h-16 object-cover rounded-lg border dark:border-slate-700 bg-slate-100 shrink-0" />
-                                )}
-                                <input
-                                    type="url"
-                                    name="imageUrl"
-                                    value={formData.imageUrl}
-                                    onChange={handleChange}
-                                    className="flex-grow w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white text-sm focus:outline-none focus:border-indigo-500"
-                                    placeholder="https://..."
-                                />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Seasons</label>
-                                <input
-                                    type="number"
-                                    name="seasons"
-                                    value={formData.seasons}
-                                    onChange={handleChange}
-                                    min="1"
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white text-sm focus:outline-none focus:border-indigo-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Total Episodes</label>
-                                <input
-                                    type="number"
-                                    name="totalEpisodes"
-                                    value={formData.totalEpisodes}
-                                    onChange={handleChange}
-                                    min="1"
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white text-sm focus:outline-none focus:border-indigo-500"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Watched Episodes</label>
-                                <input
-                                    type="number"
-                                    name="watchedEpisodes"
-                                    value={formData.watchedEpisodes}
-                                    onChange={handleChange}
-                                    min="0"
-                                    max={formData.totalEpisodes}
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white text-sm focus:outline-none focus:border-indigo-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Status</label>
-                                <select
-                                    name="status"
-                                    value={formData.status}
-                                    onChange={handleChange}
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white text-sm focus:outline-none focus:border-indigo-500"
-                                >
-                                    <option value="plan-to-watch">Plan to Watch</option>
-                                    <option value="watching">Watching</option>
-                                    <option value="completed">Completed</option>
-                                    <option value="on-hold">On Hold</option>
-                                    <option value="dropped">Dropped</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">Rating</label>
-                            <div className="flex gap-1">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                    <button
-                                        key={star}
-                                        type="button"
-                                        onClick={() => setFormData(prev => ({ ...prev, rating: star }))}
-                                        className="focus:outline-none transition-transform active:scale-125 p-1"
-                                    >
-                                        <FiStar className={`w-6 h-6 ${star <= formData.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200 dark:text-slate-700'}`} />
-                                    </button>
+                        </Field>
+                        <Field label="Status">
+                            <Select name="status" value={formData.status} onChange={handleChange}>
+                                {STATUS_OPTIONS.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
-                            </div>
-                        </div>
-                    </form>
-                </div>
+                            </Select>
+                        </Field>
+                    </div>
 
-                {/* Footer Controls */}
-                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
-                    <button type="button" onClick={onClose} className="px-4 py-2 border rounded-xl text-sm font-medium dark:border-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        form="edit-form"
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors"
-                    >
-                        Save Changes
-                    </button>
-                </div>
+                    <Field label="Rating">
+                        <RatingStars
+                            rating={formData.rating}
+                            size="lg"
+                            onChange={(value) => setFormData(prev => ({ ...prev, rating: value }))}
+                        />
+                    </Field>
+                </form>
             </div>
-        </div>
+        </Modal>
     );
 };
 

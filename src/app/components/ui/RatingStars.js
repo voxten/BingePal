@@ -23,7 +23,7 @@ export default function RatingStars({
     const currentRating = Number(rating) || 0;
 
     return (
-        <div className={`flex items-center gap-1 ${className}`}>
+        <div className={`flex items-center gap-0.5 ${className}`}>
             {[...Array(maxRating)].map((_, i) => {
                 const starValue = i + 1;
                 const isFilled = (hoverRating || currentRating) >= starValue;
@@ -41,18 +41,18 @@ export default function RatingStars({
                                 onChange(currentRating === starValue ? 0 : starValue);
                             }
                         }}
-                        className={`transition-all duration-150 ${
-                            readOnly || !onChange 
-                                ? 'cursor-default' 
-                                : 'cursor-pointer hover:scale-125 active:scale-95'
+                        className={`p-0.5 rounded transition-transform duration-150 ${
+                            readOnly || !onChange
+                                ? 'cursor-default'
+                                : 'cursor-pointer hover:scale-110 active:scale-95'
                         }`}
                         aria-label={`Rate ${starValue} of ${maxRating} stars`}
                     >
                         <FiStar
                             className={`${starSize} transition-colors ${
                                 isFilled
-                                    ? 'fill-amber-400 text-amber-400 drop-shadow-[0_1px_4px_rgba(251,191,36,0.3)]'
-                                    : 'text-slate-300 dark:text-slate-700 hover:text-slate-400'
+                                    ? 'fill-amber-400 text-amber-400'
+                                    : 'text-slate-300 dark:text-slate-600'
                             }`}
                         />
                     </button>

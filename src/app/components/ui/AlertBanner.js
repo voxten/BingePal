@@ -1,47 +1,29 @@
 "use client";
 
-import { FiRefreshCw, FiAlertCircle } from 'react-icons/fi';
+import { FiAlertCircle } from 'react-icons/fi';
+import Button from './Button';
 
-const BANNER_VARIANTS = {
-    indigo: {
-        container: 'bg-indigo-50 border-indigo-100 dark:bg-indigo-950/20 dark:border-indigo-900/40',
-        iconBg: 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400',
-        title: 'text-indigo-900 dark:text-indigo-200',
-        desc: 'text-indigo-700/80 dark:text-indigo-300/80',
-        button: 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white shadow-indigo-500/15'
-    },
-    gradient: {
-        container: 'bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border-indigo-500/30 dark:bg-indigo-950/40',
-        iconBg: 'bg-indigo-600 text-white shadow-md',
-        title: 'text-slate-800 dark:text-slate-100',
-        desc: 'text-slate-600 dark:text-slate-300',
-        button: 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white shadow-indigo-500/20'
+const BANNER_TONES = {
+    accent: {
+        container: 'bg-indigo-50/70 border-indigo-200 dark:bg-indigo-500/5 dark:border-indigo-500/20',
+        icon: 'text-indigo-600 dark:text-indigo-400',
     },
     success: {
-        container: 'bg-emerald-500/10 border-emerald-500/30 dark:bg-emerald-950/30',
-        iconBg: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400',
-        title: 'text-emerald-900 dark:text-emerald-200',
-        desc: 'text-emerald-700/90 dark:text-emerald-300/90',
-        button: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/15'
+        container: 'bg-emerald-50/70 border-emerald-200 dark:bg-emerald-500/5 dark:border-emerald-500/20',
+        icon: 'text-emerald-600 dark:text-emerald-400',
     },
     warning: {
-        container: 'bg-amber-500/10 border-amber-500/30 dark:bg-amber-950/30',
-        iconBg: 'bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400',
-        title: 'text-amber-900 dark:text-amber-200',
-        desc: 'text-amber-700/90 dark:text-amber-300/90',
-        button: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-500/15'
+        container: 'bg-amber-50/70 border-amber-200 dark:bg-amber-500/5 dark:border-amber-500/20',
+        icon: 'text-amber-600 dark:text-amber-400',
     },
-    error: {
-        container: 'bg-rose-50 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/40',
-        iconBg: 'bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400',
-        title: 'text-rose-900 dark:text-rose-200',
-        desc: 'text-rose-700/90 dark:text-rose-300/90',
-        button: 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-500/15'
+    danger: {
+        container: 'bg-rose-50/70 border-rose-200 dark:bg-rose-500/5 dark:border-rose-500/20',
+        icon: 'text-rose-600 dark:text-rose-400',
     }
 };
 
 export default function AlertBanner({
-    variant = 'indigo',
+    tone = 'accent',
     icon: IconComponent = FiAlertCircle,
     title,
     description,
@@ -51,22 +33,20 @@ export default function AlertBanner({
     loadingLabel,
     className = ''
 }) {
-    const style = BANNER_VARIANTS[variant] || BANNER_VARIANTS.indigo;
+    const style = BANNER_TONES[tone] || BANNER_TONES.accent;
 
     return (
-        <div className={`p-4 border rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${style.container} ${className}`}>
-            <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-xl shrink-0 ${style.iconBg}`}>
-                    <IconComponent className="w-5 h-5" />
-                </div>
-                <div>
+        <div className={`p-4 border rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${style.container} ${className}`}>
+            <div className="flex items-start gap-3 min-w-0">
+                <IconComponent className={`w-5 h-5 mt-px shrink-0 ${style.icon}`} />
+                <div className="min-w-0">
                     {title && (
-                        <h4 className={`font-bold text-sm leading-tight ${style.title}`}>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
                             {title}
                         </h4>
                     )}
                     {description && (
-                        <div className={`text-xs mt-0.5 leading-normal ${style.desc}`}>
+                        <div className="text-sm mt-0.5 text-slate-600 dark:text-slate-400">
                             {description}
                         </div>
                     )}
@@ -74,21 +54,14 @@ export default function AlertBanner({
             </div>
 
             {onAction && actionLabel && (
-                <button
-                    type="button"
+                <Button
+                    variant="primary"
                     onClick={onAction}
-                    disabled={isLoading}
-                    className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm shrink-0 cursor-pointer active:scale-98 disabled:pointer-events-none ${style.button}`}
+                    loading={isLoading}
+                    className="w-full sm:w-auto"
                 >
-                    {isLoading ? (
-                        <>
-                            <FiRefreshCw className="w-4 h-4 animate-spin" />
-                            <span>{loadingLabel || 'Processing...'}</span>
-                        </>
-                    ) : (
-                        <span>{actionLabel}</span>
-                    )}
-                </button>
+                    {isLoading ? (loadingLabel || 'Processing…') : actionLabel}
+                </Button>
             )}
         </div>
     );
