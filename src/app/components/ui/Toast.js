@@ -7,7 +7,7 @@ const TOAST_VARIANTS = {
     success: { icon: FiCheckCircle, iconColor: 'text-emerald-400' },
     error: { icon: FiXCircle, iconColor: 'text-rose-400' },
     warning: { icon: FiAlertCircle, iconColor: 'text-amber-400' },
-    info: { icon: FiInfo, iconColor: 'text-indigo-300' }
+    info: { icon: FiInfo, iconColor: 'text-accent-300' }
 };
 
 export default function Toast({

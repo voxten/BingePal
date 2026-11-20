@@ -38,7 +38,7 @@ export default function MediaCard({
             id={id}
             className={`group relative flex flex-col bg-white dark:bg-slate-900 border rounded-2xl transition-all duration-200 ${
                 highlighted
-                    ? 'border-indigo-500 ring-4 ring-indigo-500/25 scale-[1.02] z-20'
+                    ? 'border-accent-500 ring-4 ring-accent-500/25 scale-[1.02] z-20'
                     : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm'
             } ${className}`}
         >
@@ -58,7 +58,7 @@ export default function MediaCard({
                         onClick={onPosterClick}
                         aria-label={posterLabel || title}
                         title={posterLabel}
-                        className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+                        className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-400"
                     />
                 )}
 

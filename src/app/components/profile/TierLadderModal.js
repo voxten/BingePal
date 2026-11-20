@@ -47,7 +47,7 @@ export default function TierLadderModal({ isOpen, onClose, levelInfo }) {
                                 key={t.key}
                                 className={`flex flex-col items-center gap-2.5 rounded-xl border px-2 py-4 text-center ${
                                     isCurrent
-                                        ? 'border-indigo-300 bg-indigo-50/60 dark:border-indigo-500/40 dark:bg-indigo-500/5'
+                                        ? 'border-accent-300 bg-accent-50/60 dark:border-accent-500/40 dark:bg-accent-500/5'
                                         : 'border-slate-200 dark:border-slate-800'
                                 }`}
                             >

@@ -7,7 +7,7 @@ const CONTROL_SIZES = {
     md: 'h-10 rounded-xl px-3 text-sm',
 };
 
-export const CONTROL_BASE = 'w-full border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 transition-colors focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-400';
+export const CONTROL_BASE = 'w-full border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 transition-colors focus:outline-none focus:border-accent-500 focus:ring-4 focus:ring-accent-500/15 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-accent-400';
 
 export function Field({ label, hint, error, htmlFor, className = '', children }) {
     return (

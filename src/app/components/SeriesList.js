@@ -1,20 +1,19 @@
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { collection, query, where, deleteDoc, doc, updateDoc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import AddSeriesModal from './AddSeriesModal';
 import EditSeriesModal from './EditSeriesModal';
 import EpisodesModal from './EpisodesModal';
 import RecentlyWatched from './RecentlyWatched';
 import { recordWatchedEpisode } from '../services/recentWatchedService';
 import { migrateUserSeries } from '../services/seriesMigrationService';
+import { needsEpisodeCheck, refreshEpisodeCount } from '../services/seriesCatalogService';
 import {
     FiFilter,
     FiShare2,
     FiCheck,
-    FiSliders,
     FiCompass,
     FiShuffle,
     FiLayers,
@@ -28,54 +27,33 @@ import SeriesCard from './series/SeriesCard';
 import SeriesFilterDrawer from './series/SeriesFilterDrawer';
 import SyncMissingBanner from './series/SyncMissingBanner';
 import MigrationBanner from './series/MigrationBanner';
+import ActiveFiltersBar from './series/filters/ActiveFiltersBar';
 import Button from './ui/Button';
-import Badge from './ui/Badge';
 import EmptyState from './ui/EmptyState';
 import AlertBanner from './ui/AlertBanner';
+import ConfirmDialog from './ui/ConfirmDialog';
+import SortMenu from './ui/SortMenu';
+import StatusTabs from './ui/StatusTabs';
+import useSeriesFilters, { SORT_OPTIONS } from '../hooks/useSeriesFilters';
 
-const SORT_OPTIONS = [
-    { label: 'Title (A-Z)', value: 'title' },
-    { label: 'Rating (High to Low)', value: 'rating' },
-    { label: 'Progress (%)', value: 'progress' },
-    { label: 'Watched Episodes', value: 'watchedEpisodes' },
-    { label: 'Total Episodes', value: 'totalEpisodes' },
-    { label: 'Seasons', value: 'seasons' }
-];
-
-export default function SeriesList({ userId }) {
+// readOnly: show the collection without any editing controls, even to its
+// owner (used on the public profile page)
+export default function SeriesList({ userId, readOnly = false }) {
     const { user } = useAuth();
     const [editingSeries, setEditingSeries] = useState(null);
     const [trackingSeries, setTrackingSeries] = useState(null);
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [pendingDelete, setPendingDelete] = useState(null);
     const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
     const [copied, setCopied] = useState(false);
     const [highlightedSeriesId, setHighlightedSeriesId] = useState(null);
     const [cardLayout, setCardLayout] = useState('vertical');
 
-    const [filters, setFilters] = useState({
-        searchQuery: '',
-        status: '',
-        progressStatus: '',
-        seasonsMin: '',
-        seasonsMax: '',
-        episodesMin: '',
-        episodesMax: '',
-        ratingMin: '',
-        ratingMax: ''
-    });
-
-    const [showFilters, setShowFilters] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncStatus, setSyncStatus] = useState('');
     const [isMigrating, setIsMigrating] = useState(false);
     const [migrationMessage, setMigrationMessage] = useState('');
 
-    const [sortConfig, setSortConfig] = useState({
-        key: 'title',
-        direction: 'asc'
-    });
-
-    const isOwner = user?.uid === userId;
+    const isOwner = !readOnly && user?.uid === userId;
 
     // 1. Stable memoized query for userSeries
     const userSeriesQuery = useMemo(() => {
@@ -151,6 +129,9 @@ export default function SeriesList({ userId }) {
                     network: cData.network || uData.network || '',
                     webChannel: cData.webChannel || uData.webChannel || '',
                     streamingService: cData.streamingService || uData.streamingService || '',
+                    episodesCheckedAt: Number(cData.episodesCheckedAt ?? uData.episodesCheckedAt) || 0,
+                    showStatus: cData.showStatus || uData.showStatus || '',
+                    reopenedForTotal: Number(uData.reopenedForTotal) || 0,
                     userId: uData.userId,
                     data: function() { return this; }
                 };
@@ -174,7 +155,12 @@ export default function SeriesList({ userId }) {
                     rating: Number(data.rating) || 0,
                     watchedEpisodes: Number(data.watchedEpisodes) || 0,
                     watchedEpisodesList: Array.isArray(data.watchedEpisodesList) ? data.watchedEpisodesList : [],
+                    episodesCheckedAt: Number(data.episodesCheckedAt) || 0,
+                    showStatus: data.showStatus || '',
+                    reopenedForTotal: Number(data.reopenedForTotal) || 0,
                     userId: data.userId,
+                    // Pre-migration doc stored straight in 'series'
+                    isLegacy: true,
                     data: function() { return this; }
                 };
             });
@@ -184,6 +170,62 @@ export default function SeriesList({ userId }) {
     }, [userSeriesSnap, catalogSnap, legacyDocsList]);
 
     const isEmptyCollection = !loading && allSeries.length === 0;
+
+    // Background check for newly aired episodes/seasons. Runs one series at a time
+    // (TVMaze rate limit) and survives re-renders caused by its own catalog writes.
+    const episodeCheckRef = useRef({ running: false, unmounted: false, checked: new Set() });
+    useEffect(() => {
+        const state = episodeCheckRef.current;
+        state.unmounted = false;
+        return () => { state.unmounted = true; };
+    }, []);
+
+    useEffect(() => {
+        const state = episodeCheckRef.current;
+        if (!isOwner || loading || state.running) return;
+
+        const queue = allSeries.filter(s => !state.checked.has(s.userSeriesId) && needsEpisodeCheck(s));
+        if (queue.length === 0) return;
+
+        state.running = true;
+        (async () => {
+            for (const item of queue) {
+                if (state.unmounted) break;
+                state.checked.add(item.userSeriesId);
+                await refreshEpisodeCount({
+                    seriesId: item.seriesId,
+                    userSeriesId: item.userSeriesId,
+                    tvmazeId: item.tvmazeId,
+                    current: { totalEpisodes: item.totalEpisodes, seasons: item.seasons }
+                });
+                await new Promise(r => setTimeout(r, 600));
+            }
+            state.running = false;
+        })();
+    }, [allSeries, isOwner, loading]);
+
+    // A finished series gets new episodes -> move it back to "watching".
+    // reopenedForTotal makes this happen once per episode-count change, so a manual
+    // "completed" set afterwards sticks until the next new episodes.
+    const reopenedRef = useRef(new Set());
+    useEffect(() => {
+        if (!isOwner || loading) return;
+        allSeries.forEach(s => {
+            const total = s.totalEpisodes;
+            if (s.status !== 'completed' || total <= 0) return;
+            if (s.watchedEpisodes <= 0 || s.watchedEpisodes >= total) return;
+            if (s.reopenedForTotal === total) return;
+
+            const key = `${s.userSeriesId}_${total}`;
+            if (reopenedRef.current.has(key)) return;
+            reopenedRef.current.add(key);
+
+            const payload = { status: 'watching', reopenedForTotal: total };
+            updateDoc(doc(db, 'userSeries', s.userSeriesId), payload)
+                .catch(() => updateDoc(doc(db, 'series', s.userSeriesId), payload))
+                .catch(e => console.error('Failed to reopen series:', e));
+        });
+    }, [allSeries, isOwner, loading]);
 
     const seriesNeedingSync = useMemo(() => {
         if (!isOwner) return [];
@@ -243,96 +285,9 @@ export default function SeriesList({ userId }) {
         }
     };
 
-    const activeFiltersCount = useMemo(() => {
-        let count = 0;
-        if (filters.status) count++;
-        if (filters.progressStatus) count++;
-        if (filters.seasonsMin || filters.seasonsMax) count++;
-        if (filters.episodesMin || filters.episodesMax) count++;
-        if (filters.ratingMin || filters.ratingMax) count++;
-        return count;
-    }, [filters]);
-
-    const processedSeries = useMemo(() => {
-        return allSeries
-            .filter((series) => {
-                const title = series.title || '';
-                const query = filters.searchQuery.toLowerCase().trim();
-                
-                if (query && !title.toLowerCase().includes(query)) {
-                    return false;
-                }
-
-                if (filters.status && series.status !== filters.status) {
-                    return false;
-                }
-
-                const total = series.totalEpisodes || 0;
-                const watched = series.watchedEpisodes || 0;
-                const percent = total > 0 ? (watched / total) * 100 : 0;
-
-                if (filters.progressStatus) {
-                    if (filters.progressStatus === 'not-started' && watched !== 0) return false;
-                    if (filters.progressStatus === 'in-progress' && (percent <= 0 || percent >= 100)) return false;
-                    if (filters.progressStatus === 'completed' && percent < 100) return false;
-                }
-
-                const seasons = series.seasons || 1;
-                if (filters.seasonsMin && seasons < parseInt(filters.seasonsMin)) return false;
-                if (filters.seasonsMax && seasons > parseInt(filters.seasonsMax)) return false;
-
-                if (filters.episodesMin && watched < parseInt(filters.episodesMin)) return false;
-                if (filters.episodesMax && watched > parseInt(filters.episodesMax)) return false;
-
-                const rating = series.rating || 0;
-                if (filters.ratingMin && rating < parseInt(filters.ratingMin)) return false;
-                if (filters.ratingMax && rating > parseInt(filters.ratingMax)) return false;
-
-                return true;
-            })
-            .sort((a, b) => {
-                let aVal, bVal;
-
-                switch (sortConfig.key) {
-                    case 'rating':
-                        aVal = a.rating || 0;
-                        bVal = b.rating || 0;
-                        break;
-                    case 'progress': {
-                        const aProg = (a.totalEpisodes || 0) > 0 ? (a.watchedEpisodes || 0) / a.totalEpisodes : 0;
-                        const bProg = (b.totalEpisodes || 0) > 0 ? (b.watchedEpisodes || 0) / b.totalEpisodes : 0;
-                        aVal = aProg;
-                        bVal = bProg;
-                        break;
-                    }
-                    case 'watchedEpisodes':
-                        aVal = a.watchedEpisodes || 0;
-                        bVal = b.watchedEpisodes || 0;
-                        break;
-                    case 'totalEpisodes':
-                        aVal = a.totalEpisodes || 0;
-                        bVal = b.totalEpisodes || 0;
-                        break;
-                    case 'seasons':
-                        aVal = a.seasons || 0;
-                        bVal = b.seasons || 0;
-                        break;
-                    case 'title':
-                    default:
-                        aVal = (a.title || '').toLowerCase();
-                        bVal = (b.title || '').toLowerCase();
-                        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                        return 0;
-                }
-
-                if (sortConfig.direction === 'asc') {
-                    return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
-                } else {
-                    return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
-                }
-            });
-    }, [allSeries, filters, sortConfig]);
+    // Search, status tabs, panel filters and sorting
+    const filterState = useSeriesFilters(allSeries);
+    const { filters, set: setFilter, results: processedSeries } = filterState;
 
     const handleCopyLink = async () => {
         try {
@@ -345,15 +300,23 @@ export default function SeriesList({ userId }) {
         }
     };
 
-    const handleDelete = async (userSeriesId) => {
+    // Ask first; the actual delete runs from the ConfirmDialog below
+    const handleDelete = (userSeriesId) => {
         if (!isOwner) return;
-        if (window.confirm('Are you sure you want to delete this series from your collection?')) {
-            try {
-                await deleteDoc(doc(db, 'userSeries', userSeriesId));
-            } catch {
-                try { await deleteDoc(doc(db, 'series', userSeriesId)); } catch (e) { console.error(e); }
-            }
+        const item = allSeries.find(s => s.userSeriesId === userSeriesId);
+        if (item) setPendingDelete(item);
+    };
+
+    const confirmDelete = async () => {
+        const item = pendingDelete;
+        if (!item || !isOwner) return;
+        try {
+            // Legacy docs live in 'series' itself; never touch the shared catalog otherwise
+            await deleteDoc(doc(db, item.isLegacy ? 'series' : 'userSeries', item.userSeriesId));
+        } catch (e) {
+            console.error('Failed to remove series: ', e);
         }
+        setPendingDelete(null);
     };
 
     const handleStatusChange = async (userSeriesId, newStatus) => {
@@ -369,11 +332,11 @@ export default function SeriesList({ userId }) {
         setHighlightedSeriesId(seriesId);
         const matching = allSeries.find(d => d.id === seriesId || d.userSeriesId === seriesId || d.seriesId === seriesId);
         if (matching) {
-            if (filters.searchQuery && !matching.title?.toLowerCase().includes(filters.searchQuery.toLowerCase().trim())) {
-                setFilters(prev => ({ ...prev, searchQuery: '' }));
+            if (filters.query && !matching.title?.toLowerCase().includes(filters.query.toLowerCase().trim())) {
+                setFilter('query', '');
             }
             if (filters.status && matching.status !== filters.status) {
-                setFilters(prev => ({ ...prev, status: '' }));
+                setFilter('status', '');
             }
         }
         
@@ -455,37 +418,6 @@ export default function SeriesList({ userId }) {
         }
     };
 
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        setFilters(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleRemoveFilter = (key, value) => {
-        setFilters(prev => ({ ...prev, [key]: value }));
-    };
-
-    const resetFilters = () => {
-        setFilters({ 
-            searchQuery: '', 
-            status: '', 
-            progressStatus: '', 
-            seasonsMin: '', 
-            seasonsMax: '', 
-            episodesMin: '', 
-            episodesMax: '', 
-            ratingMin: '', 
-            ratingMax: '' 
-        });
-        setSortConfig({ key: 'title', direction: 'asc' });
-    };
-
-    const toggleSortDirection = () => {
-        setSortConfig(prev => ({
-            ...prev,
-            direction: prev.direction === 'asc' ? 'desc' : 'asc'
-        }));
-    };
-
     if (loading) return <LoadingSpinner />;
 
     if (error) {
@@ -515,9 +447,11 @@ export default function SeriesList({ userId }) {
                                 Explore series
                             </Button>
                         )}
-                        <Button icon={copied ? FiCheck : FiShare2} onClick={handleCopyLink}>
-                            {copied ? 'Link copied' : 'Copy collection link'}
-                        </Button>
+                        {!readOnly && (
+                            <Button icon={copied ? FiCheck : FiShare2} onClick={handleCopyLink}>
+                                {copied ? 'Link copied' : 'Copy collection link'}
+                            </Button>
+                        )}
                     </>
                 }
             />
@@ -567,9 +501,9 @@ export default function SeriesList({ userId }) {
                 
                 {/* Reusable Search Field */}
                 <SearchInput
-                    value={filters.searchQuery}
-                    onChange={(e) => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
-                    onClear={() => setFilters(prev => ({ ...prev, searchQuery: '' }))}
+                    value={filters.query}
+                    onChange={(e) => setFilter('query', e.target.value)}
+                    onClear={() => setFilter('query', '')}
                     placeholder={isOwner ? "Search by title..." : "Search this collection..."}
                     className="lg:max-w-md"
                 />
@@ -583,55 +517,36 @@ export default function SeriesList({ userId }) {
                         setCardLayout={setCardLayout}
                     />
 
-                    <Button icon={copied ? FiCheck : FiShare2} onClick={handleCopyLink}>
-                        {copied ? 'Copied' : 'Share'}
-                    </Button>
+                    {/* On the profile page the header already has "Share profile" */}
+                    {!readOnly && (
+                        <>
+                            <Button icon={copied ? FiCheck : FiShare2} onClick={handleCopyLink}>
+                                {copied ? 'Copied' : 'Share'}
+                            </Button>
 
-                    <Button
-                        icon={FiShuffle}
-                        href="/roulette"
-                        title="Pick something to watch at random"
-                    >
-                        <span className="hidden sm:inline">Roulette</span>
-                    </Button>
+                            <Button
+                                icon={FiShuffle}
+                                href="/roulette"
+                                title="Pick something to watch at random"
+                            >
+                                <span className="hidden sm:inline">Roulette</span>
+                            </Button>
+                        </>
+                    )}
 
-                    <Button
-                        icon={FiSliders}
-                        pressed={showFilters || activeFiltersCount > 0}
-                        onClick={() => setShowFilters(!showFilters)}
-                    >
-                        <span>Filters</span>
-                        {activeFiltersCount > 0 && (
-                            <Badge tone="accent">{activeFiltersCount}</Badge>
-                        )}
-                    </Button>
+                    <SortMenu options={SORT_OPTIONS} value={filterState.sort} onChange={filterState.setSort} />
+
+                    <SeriesFilterDrawer state={filterState} />
                 </div>
             </div>
 
-            {/* Reusable Expanded Filters Drawer & Active Filters Pills */}
-            <SeriesFilterDrawer
-                isOpen={showFilters}
-                onClose={() => setShowFilters(false)}
-                filters={filters}
-                onFilterChange={handleFilterChange}
-                sortConfig={sortConfig}
-                onSortChange={(newKey) => setSortConfig(prev => ({ ...prev, key: newKey }))}
-                onToggleSortDirection={toggleSortDirection}
-                sortOptions={SORT_OPTIONS}
-                onReset={resetFilters}
-                activeFiltersCount={activeFiltersCount}
-                onRemoveFilter={handleRemoveFilter}
+            <StatusTabs
+                value={filters.status}
+                onChange={(value) => setFilter('status', value)}
+                counts={filterState.statusCounts}
             />
 
-            {/* Results Count Info */}
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                <div>
-                    Showing <span className="font-medium text-slate-900 dark:text-slate-100">{processedSeries.length}</span> of {allSeries.length} series
-                </div>
-                <div>
-                    Sorted by <span className="font-medium text-slate-700 dark:text-slate-300">{SORT_OPTIONS.find(o => o.value === sortConfig.key)?.label}</span>, {sortConfig.direction === 'asc' ? 'ascending' : 'descending'}
-                </div>
-            </div>
+            <ActiveFiltersBar state={filterState} />
 
             {/* Series Cards Grid with SeriesCard */}
             <div className={
@@ -664,18 +579,19 @@ export default function SeriesList({ userId }) {
                     icon={FiFilter}
                     title="No series match these filters"
                     description="Try a different search term or clear some filters."
-                    action={<Button onClick={resetFilters}>Reset filters</Button>}
+                    action={<Button onClick={filterState.resetAll}>Reset filters</Button>}
                 />
             )}
 
             {/* Modals */}
-            {isOwner && (
-                <AddSeriesModal 
-                    isOpen={isAddModalOpen} 
-                    onClose={() => setIsAddModalOpen(false)} 
-                    userId={userId} 
-                />
-            )}
+            <ConfirmDialog
+                isOpen={!!pendingDelete}
+                title={pendingDelete ? `Remove “${pendingDelete.title}” from your collection?` : ''}
+                description="Your progress and rating for this series will be lost."
+                confirmLabel="Remove"
+                onConfirm={confirmDelete}
+                onCancel={() => setPendingDelete(null)}
+            />
 
             {isOwner && editingSeries && (
                 <EditSeriesModal 

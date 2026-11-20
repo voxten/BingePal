@@ -1,8 +1,22 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { auth, provider } from '../firebase';
+import { auth, provider, db } from '../firebase';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+
+// Public profile card (name + photo) so other people's profiles can show who
+// they belong to. Needs a Firestore rule: users/{uid} readable by anyone,
+// writable only by that uid. Failing here must never break sign-in.
+function savePublicProfile(user) {
+    setDoc(doc(db, 'users', user.uid), {
+        displayName: user.displayName || '',
+        photoURL: user.photoURL || '',
+        updatedAt: Date.now(),
+    }, { merge: true }).catch((error) => {
+        console.warn('Could not save public profile:', error.code || error);
+    });
+}
 
 const AuthContext = createContext();
 
@@ -14,6 +28,7 @@ export function AuthProvider({ children }) {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             setUser(user);
             setLoading(false);
+            if (user) savePublicProfile(user);
         });
 
         return unsubscribe;

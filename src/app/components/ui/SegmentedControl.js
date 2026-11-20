@@ -35,9 +35,9 @@ export default function SegmentedControl({
                         disabled={disabled}
                         title={opt.title}
                         onClick={() => onChange && onChange(opt.value)}
-                        className={`${fullWidth ? 'flex-1' : ''} inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 ${s.item} ${
+                        className={`${fullWidth ? 'flex-1' : ''} inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 ${s.item} ${
                             isActive
-                                ? 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-600/15 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-400/20'
+                                ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white'
                                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
                         }`}
                     >

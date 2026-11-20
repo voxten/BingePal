@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { recordWatchedEpisode } from '../services/recentWatchedService';
+import { countEpisodes, saveEpisodeCount } from '../services/seriesCatalogService';
 import {
     FiLoader,
     FiCheck,
@@ -33,7 +34,7 @@ const formatAirDate = (dateStr) => {
     }
 };
 
-const SEASON_ITEM_ACTIVE = 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-600/15 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-400/20';
+const SEASON_ITEM_ACTIVE = 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white';
 const SEASON_ITEM_IDLE = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100';
 
 const EpisodesModal = ({ series, onClose, isOwner }) => {
@@ -73,6 +74,17 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
                 }, {});
 
                 setEpisodesBySeason(grouped);
+
+                // New episodes/seasons may have aired since the series was added — keep stored counts in sync.
+                if (isOwner) {
+                    saveEpisodeCount({
+                        seriesId: series.seriesId,
+                        userSeriesId: series.userSeriesId || series.id,
+                        current: { totalEpisodes: series.totalEpisodes, seasons: series.seasons },
+                        fresh: countEpisodes(rawData)
+                    });
+                }
+
                 if (Object.keys(grouped).length > 0) {
                     const requestedSeason = series?.initialSeason ? String(series.initialSeason) : null;
                     if (requestedSeason && grouped[requestedSeason]) {
@@ -91,6 +103,18 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
         fetchEpisodes();
     }, [series.tvmazeId]);
 
+    const totalEpisodesCount = useMemo(() => {
+        return Object.values(episodesBySeason).reduce((sum, eps) => sum + eps.length, 0);
+    }, [episodesBySeason]);
+
+    // Uses the live TVMaze count, so a finished series reopens when a new season airs.
+    const resolveStatus = (watchedCount) => {
+        const total = totalEpisodesCount || series.totalEpisodes || 0;
+        if (total > 0 && watchedCount >= total) return 'completed';
+        if (series.status === 'completed') return 'watching';
+        return series.status;
+    };
+
     const handleToggleEpisode = async (episodeTrackerId) => {
         if (!isOwner) return;
 
@@ -106,7 +130,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
             await updateDoc(doc(db, 'userSeries', userSeriesId), { 
                 watchedEpisodesList: newList,
                 watchedEpisodes: newList.length,
-                status: newList.length === series.totalEpisodes && series.totalEpisodes > 0 ? 'completed' : series.status
+                status: resolveStatus(newList.length)
             });
 
             // If we just marked this episode as watched, log to Recently Watched
@@ -128,7 +152,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
                         airdate: targetEp.airdate || null,
                         seasonEpisodesCount: episodesBySeason[targetEp.season]?.length || null,
                         tvmazeId: series.tvmazeId,
-                        totalEpisodes: series.totalEpisodes,
+                        totalEpisodes: totalEpisodesCount || series.totalEpisodes,
                         watchedEpisodes: newList.length
                     });
                 }
@@ -157,7 +181,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
             await updateDoc(doc(db, 'userSeries', userSeriesId), {
                 watchedEpisodesList: newList,
                 watchedEpisodes: newList.length,
-                status: newList.length === series.totalEpisodes && series.totalEpisodes > 0 ? 'completed' : series.status
+                status: resolveStatus(newList.length)
             });
 
             // If we marked whole season as watched, log the final episode of that season
@@ -177,7 +201,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
                     airdate: lastEp.airdate || null,
                     seasonEpisodesCount: seasonEps.length || null,
                     tvmazeId: series.tvmazeId,
-                    totalEpisodes: series.totalEpisodes,
+                    totalEpisodes: totalEpisodesCount || series.totalEpisodes,
                     watchedEpisodes: newList.length
                 });
             }
@@ -185,10 +209,6 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
             console.error("Error toggling entire season: ", err);
         }
     };
-
-    const totalEpisodesCount = useMemo(() => {
-        return Object.values(episodesBySeason).reduce((sum, eps) => sum + eps.length, 0);
-    }, [episodesBySeason]);
 
     const overallProgressPercent = totalEpisodesCount > 0 
         ? Math.round((watchedList.length / totalEpisodesCount) * 100) 
@@ -346,7 +366,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
                                                 isOwner ? 'cursor-pointer' : 'cursor-default'
                                             } ${
                                                 isWatched
-                                                    ? 'border-indigo-200 bg-indigo-50/60 dark:border-indigo-500/30 dark:bg-indigo-500/5'
+                                                    ? 'border-accent-200 bg-accent-50/60 dark:border-accent-500/30 dark:bg-accent-500/5'
                                                     : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
                                             }`}
                                         >
@@ -364,7 +384,7 @@ const EpisodesModal = ({ series, onClose, isOwner }) => {
 
                                                 {isWatched ? (
                                                     <div className="absolute inset-0 flex items-center justify-center">
-                                                        <span className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center ring-2 ring-white/30">
+                                                        <span className="w-7 h-7 rounded-full bg-accent-600 text-white flex items-center justify-center ring-2 ring-white/30">
                                                             <FiCheck className="w-4 h-4" />
                                                         </span>
                                                     </div>

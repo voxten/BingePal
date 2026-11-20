@@ -2,7 +2,7 @@
 
 export function getProgressColor(progress) {
     if (progress >= 100) return { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' };
-    return { bar: 'bg-indigo-500', text: 'text-slate-500 dark:text-slate-400' };
+    return { bar: 'bg-accent-500', text: 'text-slate-500 dark:text-slate-400' };
 }
 
 export default function ProgressBar({

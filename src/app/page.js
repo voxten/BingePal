@@ -18,10 +18,10 @@ export default function HomePage() {
                 <SeriesList userId={user.uid} />
             ) : (
                 <div className="max-w-md mx-auto py-20 sm:py-28 text-center">
-                    <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-indigo-600 dark:text-indigo-400">
+                    <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-accent-600 dark:text-accent-400">
                         <FiTv className="w-6 h-6" />
                     </div>
-                    <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                    <h1 className="font-display text-4xl font-bold text-slate-900 dark:text-white">
                         Keep track of every episode
                     </h1>
                     <p className="mt-3 text-slate-500 dark:text-slate-400">

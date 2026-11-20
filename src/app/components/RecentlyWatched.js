@@ -24,6 +24,7 @@ import Badge from './ui/Badge';
 import Button, { IconButton } from './ui/Button';
 import SectionHeader from './ui/SectionHeader';
 import ProgressBar from './ui/ProgressBar';
+import ConfirmDialog from './ui/ConfirmDialog';
 import MediaCard from './series/MediaCard';
 
 const RecentlyWatched = ({ 
@@ -38,6 +39,7 @@ const RecentlyWatched = ({
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
     const [historyItems, setHistoryItems] = useState([]);
+    const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
     const [tvmazeMeta, setTvmazeMeta] = useState({});
     const [updatingKey, setUpdatingKey] = useState(null);
 
@@ -220,11 +222,7 @@ const RecentlyWatched = ({
                                 variant="ghost"
                                 size="sm"
                                 icon={FiTrash2}
-                                onClick={() => {
-                                    if (window.confirm('Clear all recently watched history?')) {
-                                        clearAllRecentWatched(userId);
-                                    }
-                                }}
+                                onClick={() => setIsClearConfirmOpen(true)}
                                 title="Clear watch history"
                             >
                                 <span className="hidden sm:inline">Clear</span>
@@ -393,6 +391,18 @@ const RecentlyWatched = ({
                     );
                 })}
             </div>
+
+            <ConfirmDialog
+                isOpen={isClearConfirmOpen}
+                title="Clear watch history?"
+                description="This removes every episode from Recently watched. Your progress in each series stays as it is."
+                confirmLabel="Clear history"
+                onConfirm={async () => {
+                    await clearAllRecentWatched(userId);
+                    setIsClearConfirmOpen(false);
+                }}
+                onCancel={() => setIsClearConfirmOpen(false)}
+            />
         </section>
     );
 };

@@ -22,8 +22,8 @@ export const STATUS_CONFIG = {
         label: 'Watching',
         icon: FiPlay,
         tone: 'accent',
-        dot: 'bg-indigo-500',
-        bar: 'bg-indigo-500',
+        dot: 'bg-accent-500',
+        bar: 'bg-accent-500',
     },
     'completed': {
         label: 'Completed',

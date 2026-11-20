@@ -6,6 +6,7 @@ import {
     FiCheck,
     FiList,
     FiTrash2,
+    FiEdit2,
     FiMinus,
     FiPlus
 } from 'react-icons/fi';
@@ -172,7 +173,7 @@ export default function SeriesCard({
                                                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${config.dot}`} />
                                                         <span className="whitespace-nowrap">{config.label}</span>
                                                     </span>
-                                                    {isSelected && <FiCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                                                    {isSelected && <FiCheck className="w-4 h-4 text-accent-600 dark:text-accent-400 shrink-0" />}
                                                 </button>
                                             );
                                         })}
@@ -194,6 +195,12 @@ export default function SeriesCard({
                                 label="Episode tracker"
                                 size="sm"
                                 onClick={() => onOpenTracker && onOpenTracker({ id: seriesId, ...data })}
+                            />
+                            <IconButton
+                                icon={FiEdit2}
+                                label="Edit series"
+                                size="sm"
+                                onClick={() => onEdit && onEdit({ id: seriesId, ...data })}
                             />
                             <IconButton
                                 icon={FiTrash2}
