@@ -250,9 +250,9 @@ export default function RouletteView({ allSeries = [], onOpenTracker }) {
                 <Card padding="none" className="overflow-hidden">
                     <div className="relative py-8">
                         {/* Centre slot and markers */}
-                        <div className="pointer-events-none absolute inset-y-5 left-1/2 -translate-x-1/2 w-36 sm:w-44 rounded-2xl border-2 border-indigo-500/60 bg-indigo-500/5 dark:border-indigo-400/60" />
-                        <div className="pointer-events-none absolute top-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[7px] border-x-transparent border-t-[9px] border-t-indigo-500 dark:border-t-indigo-400" />
-                        <div className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[7px] border-x-transparent border-b-[9px] border-b-indigo-500 dark:border-b-indigo-400" />
+                        <div className="pointer-events-none absolute inset-y-5 left-1/2 -translate-x-1/2 w-36 sm:w-44 rounded-2xl border-2 border-accent-500/60 bg-accent-500/5 dark:border-accent-400/60" />
+                        <div className="pointer-events-none absolute top-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[7px] border-x-transparent border-t-[9px] border-t-accent-500 dark:border-t-accent-400" />
+                        <div className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[7px] border-x-transparent border-b-[9px] border-b-accent-500 dark:border-b-accent-400" />
 
                         <div
                             ref={setContainerEl}
@@ -313,8 +313,8 @@ export default function RouletteView({ allSeries = [], onOpenTracker }) {
 
                         <div className="flex-1 min-w-0 flex flex-col gap-4">
                             <div>
-                                <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">Tonight&apos;s pick</p>
-                                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                                <p className="text-xs font-medium text-accent-600 dark:text-accent-400">Tonight&apos;s pick</p>
+                                <h2 className="mt-1 font-display text-3xl font-bold text-slate-900 dark:text-white">
                                     {liveWinner.title}
                                 </h2>
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400 tabular-nums">

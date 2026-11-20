@@ -151,7 +151,7 @@ export default function UserProfileStats({ stats, loadingEnrichment = false }) {
 
                                     <div className="flex-1 min-w-0 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                                            className="h-full rounded-full bg-accent-500 transition-all duration-500"
                                             style={{ width: `${percentage}%` }}
                                         />
                                     </div>

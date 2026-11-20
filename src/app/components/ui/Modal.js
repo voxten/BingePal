@@ -67,7 +67,7 @@ export default function Modal({
                             <div className="flex min-w-0 items-start gap-3">
                                 {headerStart}
                                 <div className="min-w-0">
-                                    <div className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+                                    <div className="font-display text-lg font-semibold text-slate-900 dark:text-white">
                                         {title}
                                     </div>
                                     {description && (

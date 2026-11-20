@@ -24,7 +24,7 @@ export default function SearchInput({
                 placeholder={placeholder}
                 className={`${CONTROL_BASE} h-10 rounded-xl pl-10 pr-16 text-sm`}
             />
-            <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none" />
+            <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-slate-600 dark:group-focus-within:text-slate-300 transition-colors pointer-events-none" />
 
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {isLoading && (

@@ -16,6 +16,14 @@ const EditSeriesModal = ({ series, onClose }) => {
     const [isFetching, setIsFetching] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [fetchError, setFetchError] = useState('');
+    const [saveError, setSaveError] = useState('');
+    const [hasFetched, setHasFetched] = useState(false);
+
+    // Title, poster and episode counts live in the shared 'series' catalog, so
+    // hand edits there would change the show for everyone who tracks it. Only
+    // custom series (no TVMaze/IMDb id) belong to one person and stay editable;
+    // linked shows change through "Refresh from IMDb" instead.
+    const canEditCatalog = !series?.tvmazeId && !series?.imdbId;
 
     const [formData, setFormData] = useState({
         title: '',
@@ -101,6 +109,7 @@ const EditSeriesModal = ({ series, onClose }) => {
                     tvmazeId: showId
                 };
             });
+            setHasFetched(true);
 
         } catch (err) {
             setFetchError(err.message);
@@ -112,11 +121,12 @@ const EditSeriesModal = ({ series, onClose }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSaving(true);
+        setSaveError('');
         try {
             const seriesDocId = series.seriesId || series.id;
             const userSeriesDocId = series.userSeriesId || series.id;
 
-            // 1. Update shared catalog document in 'series'
+            // 1. Update shared catalog document in 'series' (see canEditCatalog)
             const catalogData = {
                 title: formData.title,
                 imageUrl: formData.imageUrl,
@@ -126,7 +136,7 @@ const EditSeriesModal = ({ series, onClose }) => {
                 tvmazeId: formData.tvmazeId ? formData.tvmazeId.toString() : '',
                 updatedAt: Date.now()
             };
-            if (seriesDocId) {
+            if (seriesDocId && (canEditCatalog || hasFetched)) {
                 await setDoc(doc(db, 'series', seriesDocId), catalogData, { merge: true });
             }
 
@@ -144,6 +154,7 @@ const EditSeriesModal = ({ series, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error updating document: ', error);
+            setSaveError("Couldn't save your changes. Check your connection and try again.");
         } finally {
             setIsSaving(false);
         }
@@ -208,6 +219,21 @@ const EditSeriesModal = ({ series, onClose }) => {
                 <div className="h-px bg-slate-200 dark:bg-slate-800" />
 
                 <form id="edit-form" onSubmit={handleSubmit} className="space-y-4">
+                    {saveError && (
+                        <p className="flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400" role="alert">
+                            <FiAlertCircle className="w-4 h-4 shrink-0" />
+                            {saveError}
+                        </p>
+                    )}
+
+                    {/* A disabled fieldset disables every input inside it */}
+                    <fieldset disabled={!canEditCatalog} className="space-y-4">
+                    {!canEditCatalog && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Title, poster and episode counts come from TVMaze and are shared by everyone tracking this show. Use Refresh from IMDb above to update them.
+                        </p>
+                    )}
+
                     <Field label="Title">
                         <Input type="text" name="title" value={formData.title} onChange={handleChange} required />
                     </Field>
@@ -229,6 +255,7 @@ const EditSeriesModal = ({ series, onClose }) => {
                             <Input type="number" name="totalEpisodes" value={formData.totalEpisodes} onChange={handleChange} min="1" />
                         </Field>
                     </div>
+                    </fieldset>
 
                     <div className="grid grid-cols-2 gap-4">
                         <Field label="Watched episodes">

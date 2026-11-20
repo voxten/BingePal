@@ -5,8 +5,8 @@ import Button from './Button';
 
 const BANNER_TONES = {
     accent: {
-        container: 'bg-indigo-50/70 border-indigo-200 dark:bg-indigo-500/5 dark:border-indigo-500/20',
-        icon: 'text-indigo-600 dark:text-indigo-400',
+        container: 'bg-accent-50/70 border-accent-200 dark:bg-accent-500/5 dark:border-accent-500/20',
+        icon: 'text-accent-600 dark:text-accent-400',
     },
     success: {
         container: 'bg-emerald-50/70 border-emerald-200 dark:bg-emerald-500/5 dark:border-emerald-500/20',

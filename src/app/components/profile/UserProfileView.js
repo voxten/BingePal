@@ -2,11 +2,13 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useCollection } from 'react-firebase-hooks/firestore';
-import { collection, query, where } from 'firebase/firestore';
+import { useCollection, useDocument } from 'react-firebase-hooks/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import AppShell from '../layout/AppShell';
 import LoadingSpinner from '../LoadingSpinner';
+import SeriesList from '../SeriesList';
+import SectionHeader from '../ui/SectionHeader';
 import UserProfileStats from './UserProfileStats';
 import TierAvatar from './TierAvatar';
 import TierLadderModal from './TierLadderModal';
@@ -107,11 +109,20 @@ export default function UserProfileView({ profileId }) {
 
     const [isTiersOpen, setIsTiersOpen] = useState(false);
 
+    // Public name/photo saved at sign-in (see AuthContext). Missing for people
+    // who haven't signed in since, or if Firestore rules block the read.
+    const publicProfileRef = useMemo(
+        () => (profileId && !isOwner ? doc(db, 'users', profileId) : null),
+        [profileId, isOwner]
+    );
+    const [publicProfileSnap] = useDocument(publicProfileRef);
+    const publicProfile = publicProfileSnap?.data();
+
     const displayName = isOwner && user
         ? (user.displayName || user.email?.split('@')[0] || 'My Profile')
-        : `User ${profileId ? profileId.slice(0, 6) : ''}`;
+        : (publicProfile?.displayName || 'BingePal viewer');
 
-    const userPhoto = isOwner && user ? user.photoURL : null;
+    const userPhoto = isOwner && user ? user.photoURL : (publicProfile?.photoURL || null);
 
     return (
         <AppShell activeTab={isOwner ? 'profile' : ''}>
@@ -133,7 +144,7 @@ export default function UserProfileView({ profileId }) {
                             />
 
                             <div className="min-w-0 flex-1">
-                                <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white truncate">
+                                <h1 className="font-display text-3xl font-bold text-slate-900 dark:text-white truncate">
                                     {displayName}
                                 </h1>
                                 <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400 truncate tabular-nums">
@@ -178,6 +189,15 @@ export default function UserProfileView({ profileId }) {
                         stats={stats}
                         loadingEnrichment={loadingEnrichment}
                     />
+
+                    {/* What the "Share" link is for: the collection itself, view-only */}
+                    <section className="space-y-4" aria-labelledby="profile-collection-heading">
+                        <SectionHeader
+                            title={<span id="profile-collection-heading">Collection</span>}
+                            count={allSeries.length}
+                        />
+                        <SeriesList userId={profileId} readOnly />
+                    </section>
 
                     <TierLadderModal
                         isOpen={isTiersOpen}
